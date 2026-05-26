@@ -1,0 +1,1525 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 副官：智战</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#0a0e17; color:#c8d6e5; font-family:'Segoe UI',system-ui,sans-serif; overflow:hidden; height:100vh; }
+.screen { display:none; width:100%; height:100vh; }
+.screen.active { display:flex; flex-direction:column; align-items:center; justify-content:center; }
+
+/* Deploy */
+.deploy-header { text-align:center; margin-bottom:30px; }
+.deploy-header h1 { font-size:2.4em; color:#e2e8f0; letter-spacing:2px; }
+.subtitle { color:#64748b; margin-top:8px; font-size:1.1em; }
+.unit-selector { display:flex; gap:24px; margin:20px 0; }
+.unit-card { background:#131a2b; border:2px solid #1e293b; border-radius:16px; padding:28px 24px; width:220px; text-align:center; transition:border-color .2s; }
+.unit-card:hover { border-color:#334155; }
+.unit-icon { font-size:52px; margin-bottom:10px; display:block; }
+.unit-name { font-size:1.3em; font-weight:700; margin-bottom:6px; }
+.unit-desc { font-size:.85em; color:#64748b; margin-bottom:14px; line-height:1.4; }
+.unit-stats { font-size:.78em; color:#94a3b8; margin-bottom:16px; text-align:left; line-height:1.7; }
+.counter { display:flex; align-items:center; justify-content:center; gap:14px; }
+.counter button { width:36px; height:36px; border-radius:50%; border:2px solid #334155; background:#1e293b; color:#e2e8f0; font-size:1.2em; cursor:pointer; transition:all .15s; }
+.counter button:hover { background:#334155; border-color:#475569; }
+.counter button:disabled { opacity:.3; cursor:default; }
+.counter .count { font-size:1.6em; font-weight:700; min-width:30px; text-align:center; }
+.deploy-footer { display:flex; align-items:center; gap:24px; margin-top:20px; }
+.unit-count { font-size:1.1em; color:#94a3b8; }
+.btn-primary { padding:14px 40px; border:none; border-radius:10px; background:linear-gradient(135deg,#3b82f6,#2563eb); color:#fff; font-size:1.1em; font-weight:600; cursor:pointer; transition:all .2s; letter-spacing:1px; }
+.btn-primary:hover:not(:disabled) { transform:translateY(-2px); box-shadow:0 6px 20px rgba(59,130,246,.35); }
+.btn-primary:disabled { opacity:.35; cursor:default; }
+
+/* Combat HUD */
+#combat-screen { position:relative; }
+#combat-screen.active { justify-content:flex-start; }
+#combat-hud { display:flex; align-items:center; justify-content:space-between; width:100%; padding:10px 20px; background:#0d1220; z-index:10; }
+.hud-left,.hud-right { flex:1; }
+.hud-right { text-align:right; }
+.hud-center { flex:0 0 auto; }
+#timer { font-size:1.8em; font-weight:700; color:#e2e8f0; font-variant-numeric:tabular-nums; }
+.bar-label { font-size:.82em; color:#94a3b8; }
+.hp-bar { width:200px; height:14px; background:#1e293b; border-radius:7px; overflow:hidden; margin-top:4px; display:inline-block; }
+.hp-fill { height:100%; border-radius:7px; transition:width .3s; }
+.hp-fill.blue { background:linear-gradient(90deg,#3b82f6,#60a5fa); width:100%; }
+.hp-fill.red { background:linear-gradient(90deg,#ef4444,#f87171); width:100%; }
+#game-canvas { display:block; background:#0f1625; cursor:crosshair; flex:1; width:100%; }
+
+/* Advisor */
+#advisor-panel { position:absolute; bottom:20px; left:50%; transform:translateX(-50%); background:rgba(15,22,37,.92); border:1px solid #1e293b; border-radius:12px; padding:14px 20px; display:none; align-items:center; gap:14px; max-width:600px; backdrop-filter:blur(8px); z-index:20; }
+#advisor-panel.show { display:flex; }
+#advisor-msg { font-size:.92em; color:#cbd5e1; flex:1; }
+#advisor-msg::before { content:'🎖 副官: '; color:#f59e0b; font-weight:600; }
+.btn-small { padding:6px 16px; border:none; border-radius:6px; font-size:.82em; cursor:pointer; font-weight:600; }
+.btn-accept { background:#22c55e; color:#fff; }
+.btn-reject { background:#475569; color:#cbd5e1; }
+.btn-accept:hover { background:#16a34a; }
+.btn-reject:hover { background:#64748b; }
+
+/* Click feedback */
+#click-feedback { position:absolute; pointer-events:none; z-index:15; }
+.click-ring { position:absolute; width:40px; height:40px; border:2px solid #3b82f6; border-radius:50%; transform:translate(-50%,-50%); animation:ringPulse .6s ease-out forwards; pointer-events:none; }
+.click-ring.attack { border-color:#ef4444; }
+.click-ring.retreat { border-color:#22c55e; }
+@keyframes ringPulse { 0%{opacity:1;transform:translate(-50%,-50%) scale(.5);} 100%{opacity:0;transform:translate(-50%,-50%) scale(1.5);} }
+
+/* Combat hints */
+#combat-hints { position:absolute; top:56px; left:50%; transform:translateX(-50%); display:flex; gap:16px; z-index:10; opacity:.6; }
+#combat-hints span { font-size:.75em; color:#94a3b8; background:rgba(15,22,37,.7); padding:4px 10px; border-radius:6px; }
+
+/* Result */
+.result-content { text-align:center; }
+#result-title { font-size:3em; margin-bottom:30px; }
+#result-stats { margin-bottom:30px; font-size:1em; color:#94a3b8; line-height:2; }
+.win { color:#22c55e; }
+.lose { color:#ef4444; }
+.draw { color:#f59e0b; }
+
+/* Damage numbers */
+.dmg-num { position:absolute; pointer-events:none; font-weight:700; font-size:14px; animation:dmgFloat .8s ease-out forwards; z-index:15; text-shadow:0 1px 3px rgba(0,0,0,.7); }
+@keyframes dmgFloat { 0%{opacity:1;transform:translateY(0);} 100%{opacity:0;transform:translateY(-30px);} }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="deploy-screen" class="screen active">
+    <div class="deploy-header">
+      <h1>AI 副官：智战</h1>
+      <p class="subtitle">选择你的部队编制 — 共 8 个单位</p>
+    </div>
+    <div class="unit-selector"></div>
+    <div class="deploy-footer">
+      <div class="unit-count">已选择: <span id="total-units">0</span> / 8</div>
+      <button id="btn-start" class="btn-primary" disabled>开始战斗</button>
+    </div>
+  </div>
+
+  <div id="combat-screen" class="screen">
+    <div id="combat-hud">
+      <div class="hud-left">
+        <div class="hq-bar player-bar">
+          <span class="bar-label">我方主堡</span>
+          <div class="hp-bar"><div id="player-hq-hp" class="hp-fill blue"></div></div>
+        </div>
+      </div>
+      <div class="hud-center"><div id="timer">03:00</div></div>
+      <div class="hud-right">
+        <div class="hq-bar enemy-bar">
+          <span class="bar-label">敌方主堡</span>
+          <div class="hp-bar"><div id="enemy-hq-hp" class="hp-fill red"></div></div>
+        </div>
+      </div>
+    </div>
+    <canvas id="game-canvas"></canvas>
+    <div id="advisor-panel">
+      <div id="advisor-msg"></div>
+      <div id="advisor-buttons">
+        <button id="btn-accept" class="btn-small btn-accept">采纳</button>
+        <button id="btn-reject" class="btn-small btn-reject">拒绝</button>
+      </div>
+    </div>
+    <div id="combat-hints">
+      <span>点击空地=推进</span>
+      <span>点击敌人=集火</span>
+      <span>点击友军=撤退</span>
+      <span>迷雾中不自动交战</span>
+    </div>
+    <div id="click-feedback"></div>
+  </div>
+
+  <div id="result-screen" class="screen">
+    <div class="result-content">
+      <h1 id="result-title"></h1>
+      <div id="result-stats"></div>
+      <button id="btn-replay" class="btn-primary">再来一局</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== CONSTANTS =====
+const CELL = 40;
+const COLS = 28, ROWS = 16;
+const W = COLS * CELL, H = ROWS * CELL;
+const MAX_UNITS = 8;
+const BATTLE_TIME = 180;
+const COUNTER_BONUS = 1.6;
+
+const UNIT_DEFS = {
+  infantry: { name:'步兵', icon:'⚔', hp:160, atk:16, range:1.5, speed:1.2, atkSpeed:1.4, desc:'血量高、近战、攻击慢', color:'#3b82f6', eColor:'#ef4444', counter:'cavalry' },
+  archer:   { name:'射手', icon:'🏹', hp:85, atk:28, range:5, speed:1, atkSpeed:2.2, desc:'血量低、远程、攻击力高', color:'#22d3ee', eColor:'#f97316', counter:'infantry' },
+  cavalry:  { name:'骑兵', icon:'🐎', hp:125, atk:22, range:2, speed:2.2, atkSpeed:1.5, desc:'机动性强、中距离攻击', color:'#a78bfa', eColor:'#fb923c', counter:'archer' }
+};
+
+// Fog of war constants
+const FOG_UNEXPLORED = 0;
+const FOG_EXPLORED = 1;
+const FOG_VISIBLE = 2;
+const BUILDING_VISION_RANGE = 4;
+const FOG_TICK_INTERVAL = 0.1; // 10Hz
+
+// ===== STATE =====
+let phase = 'deploy';
+let selected = { infantry:0, archer:0, cavalry:0 };
+let units = [];
+let buildings = [];
+let projectiles = [];
+let particles = [];
+let battleTimer = BATTLE_TIME;
+let lastTime = 0;
+let animId = null;
+let advisorTimer = 0;
+let advisorActive = false;
+let advisorAction = null;
+let playerCommand = null;
+let selectedTarget = null;
+let obstacles = [];
+let obstacleSet = new Set();
+let moveCursor = null;
+let canvasScale = 1;
+let canvasOffsetX = 0;
+let canvasOffsetY = 0;
+
+// Fog of War state
+let fogGrid = null;           // Uint8Array(COLS * ROWS)
+let cloudCanvas = null;       // Offscreen canvas with cloud texture
+let fogOverlayCanvas = null;  // Pre-allocated fog overlay canvas
+let fogOverlayCtx = null;
+let visionTickTimer = 0;
+let exploredBuildings = new Map(); // buildingId -> { type, gx, gy, hp, maxHp, team }
+
+// ===== DOM REFS =====
+const $ = id => document.getElementById(id);
+const canvas = $('game-canvas');
+const ctx = canvas.getContext('2d');
+
+// ===== DEPLOY PHASE =====
+function initDeploy() {
+  phase = 'deploy';
+  selected = { infantry:0, archer:0, cavalry:0 };
+  units = []; buildings = []; projectiles = []; particles = [];
+  battleTimer = BATTLE_TIME;
+  advisorTimer = 0; advisorActive = false;
+  selectedTarget = null;
+  moveCursor = null;
+  playerCommand = null;
+  if(animId) cancelAnimationFrame(animId);
+  showScreen('deploy-screen');
+  renderDeployCards();
+}
+
+function renderDeployCards() {
+  const container = document.querySelector('.unit-selector');
+  container.innerHTML = '';
+  for(const [key, def] of Object.entries(UNIT_DEFS)) {
+    const card = document.createElement('div');
+    card.className = 'unit-card';
+    card.innerHTML = `
+      <span class="unit-icon">${def.icon}</span>
+      <div class="unit-name">${def.name}</div>
+      <div class="unit-desc">${def.desc}</div>
+      <div class="unit-stats">
+        ❤️ 生命 ${def.hp} &nbsp; ⚔ 攻击 ${def.atk}<br>
+        📏 射程 ${def.range} &nbsp; 💨 速度 ${def.speed}<br>
+        🎯 克制: ${UNIT_DEFS[def.counter].name}
+      </div>
+      <div class="counter">
+        <button class="btn-minus" data-unit="${key}">−</button>
+        <span class="count" id="count-${key}">0</span>
+        <button class="btn-plus" data-unit="${key}">+</button>
+      </div>`;
+    container.appendChild(card);
+  }
+  container.querySelectorAll('.btn-plus').forEach(b => b.addEventListener('click', () => changeCount(b.dataset.unit, 1)));
+  container.querySelectorAll('.btn-minus').forEach(b => b.addEventListener('click', () => changeCount(b.dataset.unit, -1)));
+  updateDeployUI();
+}
+
+function changeCount(unit, delta) {
+  const total = Object.values(selected).reduce((a,b)=>a+b,0);
+  const nv = selected[unit] + delta;
+  if(nv < 0 || (delta > 0 && total >= MAX_UNITS)) return;
+  selected[unit] = nv;
+  updateDeployUI();
+}
+
+function updateDeployUI() {
+  const total = Object.values(selected).reduce((a,b)=>a+b,0);
+  $('total-units').textContent = total;
+  $('btn-start').disabled = total !== MAX_UNITS;
+  for(const key of Object.keys(UNIT_DEFS)) {
+    const el = $('count-' + key);
+    if(el) el.textContent = selected[key];
+  }
+  document.querySelectorAll('.btn-plus').forEach(b => { b.disabled = total >= MAX_UNITS; });
+  document.querySelectorAll('.btn-minus').forEach(b => { b.disabled = selected[b.dataset.unit] <= 0; });
+}
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  $(id).classList.add('active');
+}
+
+// ===== UNIT & BUILDING CLASSES =====
+class Unit {
+  constructor(type, team, gx, gy) {
+    const def = UNIT_DEFS[type];
+    this.type = type; this.team = team;
+    this.hp = def.hp; this.maxHp = def.hp;
+    this.atk = def.atk; this.range = def.range;
+    this.speed = def.speed; this.atkSpeed = def.atkSpeed;
+    this.counter = def.counter;
+    this.x = gx * CELL + CELL/2;
+    this.y = gy * CELL + CELL/2;
+    this.targetX = this.x; this.targetY = this.y;
+    this.atkCooldown = 0;
+    this.alive = true;
+    this.target = null;
+    this.retreating = false;
+    this.deathTimer = 0;
+    this.flashTimer = 0;
+    this.atkSlot = -1;
+  }
+  get gx() { return Math.floor(this.x / CELL); }
+  get gy() { return Math.floor(this.y / CELL); }
+}
+
+class Building {
+  constructor(type, team, gx, gy) {
+    this.type = type; this.team = team;
+    this.gx = gx; this.gy = gy;
+    this.x = gx * CELL + CELL/2;
+    this.y = gy * CELL + CELL/2;
+    this.alive = true;
+    this.flashTimer = 0;
+    if(type === 'hq') { this.hp = 600; this.maxHp = 600; this.atk = 0; this.range = 0; this.atkCooldown = 0; }
+    else { this.hp = 250; this.maxHp = 250; this.atk = 18; this.range = 6; this.atkCooldown = 0; this.atkSpeed = 2.5; }
+  }
+  get id() { return this.team + '_' + this.type + '_' + this.gx + '_' + this.gy; }
+}
+
+// ===== OBSTACLES =====
+function initObstacles() {
+  obstacles = [];
+  obstacleSet = new Set();
+  const blocks = [
+    ...[2,3].flatMap(r => [2,3].map(c => [c, r])),
+    ...[2,3].flatMap(r => [14,15].map(c => [c, r])),
+    ...[12,13].flatMap(r => [2,3].map(c => [c, r])),
+    ...[12,13].flatMap(r => [14,15].map(c => [c, r])),
+  ];
+  for(const [gx, gy] of blocks) {
+    obstacles.push({ gx, gy });
+    obstacleSet.add(gx + ',' + gy);
+  }
+}
+
+function isObstacle(gx, gy) { return obstacleSet.has(gx + ',' + gy); }
+function isObstacleAt(x, y) { return isObstacle(Math.floor(x / CELL), Math.floor(y / CELL)); }
+
+function hasLineOfSight(x1, y1, x2, y2) {
+  const d = Math.hypot(x2 - x1, y2 - y1);
+  const steps = Math.ceil(d / (CELL * 0.5));
+  for(let i = 1; i < steps; i++) {
+    const t = i / steps;
+    if(isObstacleAt(x1 + (x2-x1)*t, y1 + (y2-y1)*t)) return false;
+  }
+  return true;
+}
+
+// ===== FOG OF WAR =====
+
+// Procedural cloud texture (value noise, cached to offscreen canvas)
+function generateCloudTexture() {
+  const size = 256;
+  const off = document.createElement('canvas');
+  off.width = size; off.height = size;
+  const oCtx = off.getContext('2d');
+  const imgData = oCtx.createImageData(size, size);
+  const d = imgData.data;
+
+  // Generate noise grids for 2 octaves
+  const gs1 = 16, gs2 = 32;
+  const n1 = Array.from({length: (gs1+1)*(gs1+1)}, () => Math.random());
+  const n2 = Array.from({length: (gs2+1)*(gs2+1)}, () => Math.random());
+
+  for(let y = 0; y < size; y++) {
+    for(let x = 0; x < size; x++) {
+      // Octave 1 (16x16 grid)
+      const gx1 = x / size * gs1, gy1 = y / size * gs1;
+      const ix1 = Math.floor(gx1), iy1 = Math.floor(gy1);
+      const fx1 = gx1 - ix1, fy1 = gy1 - iy1;
+      const sfx1 = fx1*fx1*(3-2*fx1), sfy1 = fy1*fy1*(3-2*fy1);
+      const stride1 = gs1 + 1;
+      const v1 = n1[iy1*stride1+ix1]*(1-sfx1)*(1-sfy1) + n1[iy1*stride1+ix1+1]*sfx1*(1-sfy1)
+               + n1[(iy1+1)*stride1+ix1]*(1-sfx1)*sfy1 + n1[(iy1+1)*stride1+ix1+1]*sfx1*sfy1;
+      // Octave 2 (32x32 grid)
+      const gx2 = x / size * gs2, gy2 = y / size * gs2;
+      const ix2 = Math.floor(gx2), iy2 = Math.floor(gy2);
+      const fx2 = gx2 - ix2, fy2 = gy2 - iy2;
+      const sfx2 = fx2*fx2*(3-2*fx2), sfy2 = fy2*fy2*(3-2*fy2);
+      const stride2 = gs2 + 1;
+      const v2 = n2[iy2*stride2+ix2]*(1-sfx2)*(1-sfy2) + n2[iy2*stride2+ix2+1]*sfx2*(1-sfy2)
+               + n2[(iy2+1)*stride2+ix2]*(1-sfx2)*sfy2 + n2[(iy2+1)*stride2+ix2+1]*sfx2*sfy2;
+
+      const v = v1 * 0.65 + v2 * 0.35;
+      const idx = (y * size + x) * 4;
+      d[idx]   = 15 + Math.floor(v * 30);   // R
+      d[idx+1] = 18 + Math.floor(v * 25);   // G
+      d[idx+2] = 40 + Math.floor(v * 45);   // B
+      d[idx+3] = 210 + Math.floor(v * 45);  // A
+    }
+  }
+  oCtx.putImageData(imgData, 0, 0);
+  return off;
+}
+
+function initFog() {
+  fogGrid = new Uint8Array(COLS * ROWS);
+  exploredBuildings = new Map();
+  visionTickTimer = 0;
+
+  // Generate cloud texture
+  cloudCanvas = generateCloudTexture();
+
+  // Pre-allocate fog overlay canvas
+  fogOverlayCanvas = document.createElement('canvas');
+  fogOverlayCanvas.width = W;
+  fogOverlayCanvas.height = H;
+  fogOverlayCtx = fogOverlayCanvas.getContext('2d');
+
+  // Initial vision: player's half is explored + visible
+  const midCol = Math.floor(COLS / 2);
+  for(let gx = 0; gx < midCol; gx++) {
+    for(let gy = 0; gy < ROWS; gy++) {
+      const idx = gy * COLS + gx;
+      fogGrid[idx] = FOG_VISIBLE;
+    }
+  }
+  // Also apply building vision for player buildings (may extend past midline)
+  for(const b of buildings) {
+    if(b.team !== 'player') continue;
+    markDiamondVision(b.gx, b.gy, BUILDING_VISION_RANGE, true);
+  }
+}
+
+function getFogCell(gx, gy) {
+  if(gx < 0 || gx >= COLS || gy < 0 || gy >= ROWS) return FOG_UNEXPLORED;
+  return fogGrid[gy * COLS + gx];
+}
+
+function isCellVisible(gx, gy) { return getFogCell(gx, gy) === FOG_VISIBLE; }
+function isCellExplored(gx, gy) { const v = getFogCell(gx, gy); return v === FOG_VISIBLE || v === FOG_EXPLORED; }
+
+// Mark diamond-shaped area as visible (Manhattan distance)
+function markDiamondVision(cx, cy, range, isInitial) {
+  for(let dx = -range; dx <= range; dx++) {
+    for(let dy = -(range - Math.abs(dx)); dy <= (range - Math.abs(dx)); dy++) {
+      const gx = cx + dx, gy = cy + dy;
+      if(gx >= 0 && gx < COLS && gy >= 0 && gy < ROWS) {
+        const idx = gy * COLS + gx;
+        fogGrid[idx] = FOG_VISIBLE;
+      }
+    }
+  }
+}
+
+function updateVision() {
+  // Step 1: Downgrade all currently visible cells to explored
+  for(let i = 0; i < fogGrid.length; i++) {
+    if(fogGrid[i] === FOG_VISIBLE) fogGrid[i] = FOG_EXPLORED;
+  }
+
+  // Step 2: Mark vision from all player sources
+  // Player units
+  for(const u of units) {
+    if(!u.alive || u.team !== 'player') continue;
+    const range = Math.ceil(u.range + 1);
+    markDiamondVision(u.gx, u.gy, range, false);
+  }
+  // Player buildings
+  for(const b of buildings) {
+    if(!b.alive || b.team !== 'player') continue;
+    markDiamondVision(b.gx, b.gy, BUILDING_VISION_RANGE, false);
+  }
+
+  // Step 3: Track explored enemy buildings
+  for(const b of buildings) {
+    if(b.team === 'player' || !b.alive) continue;
+    if(isCellVisible(b.gx, b.gy)) {
+      // Currently visible - update snapshot
+      exploredBuildings.set(b.id, {
+        type: b.type, gx: b.gx, gy: b.gy,
+        x: b.x, y: b.y,
+        hp: b.hp, maxHp: b.maxHp, team: b.team,
+        visible: true
+      });
+    } else {
+      // Not visible - keep cached snapshot if exists, mark as not currently visible
+      if(exploredBuildings.has(b.id)) {
+        exploredBuildings.get(b.id).visible = false;
+      }
+    }
+  }
+}
+
+// Fog visibility helpers for game objects
+function isEntityVisibleToPlayer(entity) {
+  const gx = Math.floor(entity.x / CELL);
+  const gy = Math.floor(entity.y / CELL);
+  return isCellVisible(gx, gy);
+}
+
+function isBuildingVisibleToPlayer(b) {
+  return isCellVisible(b.gx, b.gy);
+}
+
+function isBuildingExplored(b) {
+  return exploredBuildings.has(b.id) && isCellExplored(b.gx, b.gy);
+}
+
+// ===== COMBAT INIT =====
+function startCombat() {
+  showScreen('combat-screen');
+  phase = 'combat';
+
+  const hud = $('combat-hud');
+  const availH = window.innerHeight - hud.offsetHeight;
+  const availW = window.innerWidth;
+  const scale = Math.min(availW / W, availH / H);
+  canvasScale = scale;
+  canvas.width = W;
+  canvas.height = H;
+  canvas.style.width = Math.floor(W * scale) + 'px';
+  canvas.style.height = Math.floor(H * scale) + 'px';
+  canvas.style.margin = '0 auto';
+
+  requestAnimationFrame(() => {
+    const rect = canvas.getBoundingClientRect();
+    canvasOffsetX = rect.left;
+    canvasOffsetY = rect.top;
+  });
+
+  units = []; buildings = []; projectiles = []; particles = [];
+  battleTimer = BATTLE_TIME;
+  advisorTimer = 10 + Math.random()*5;
+  advisorActive = false;
+  playerCommand = null;
+  selectedTarget = null;
+  moveCursor = null;
+  $('advisor-panel').classList.remove('show');
+
+  initObstacles();
+
+  // Place buildings
+  buildings.push(new Building('hq', 'player', 1, Math.floor(ROWS/2)));
+  buildings.push(new Building('tower', 'player', 4, 3));
+  buildings.push(new Building('tower', 'player', 4, ROWS-4));
+  buildings.push(new Building('hq', 'enemy', COLS-2, Math.floor(ROWS/2)));
+  buildings.push(new Building('tower', 'enemy', COLS-5, 3));
+  buildings.push(new Building('tower', 'enemy', COLS-5, ROWS-4));
+
+  // Place player units
+  const pUnits = [];
+  for(const [type, count] of Object.entries(selected)) {
+    for(let i = 0; i < count; i++) pUnits.push(type);
+  }
+  const pSpacing = Math.floor((ROWS - 4) / Math.max(pUnits.length, 1));
+  pUnits.forEach((type, i) => {
+    const row = 2 + i * pSpacing + Math.floor(pSpacing/2);
+    const col = 5 + (i % 2);
+    units.push(new Unit(type, 'player', col, Math.min(row, ROWS-2)));
+  });
+
+  // AI enemy composition
+  const enemyComp = aiPickComposition();
+  const eUnits = [];
+  for(const [type, count] of Object.entries(enemyComp)) {
+    for(let i = 0; i < count; i++) eUnits.push(type);
+  }
+  const eSpacing = Math.floor((ROWS - 4) / Math.max(eUnits.length, 1));
+  eUnits.forEach((type, i) => {
+    const row = 2 + i * eSpacing + Math.floor(eSpacing/2);
+    const col = COLS - 6 - (i % 2);
+    units.push(new Unit(type, 'enemy', col, Math.min(row, ROWS-2)));
+  });
+
+  // Initialize fog of war (after buildings/units are placed)
+  initFog();
+
+  lastTime = performance.now();
+  gameLoop(lastTime);
+}
+
+function aiPickComposition() {
+  const comp = { infantry:0, archer:0, cavalry:0 };
+  const types = Object.keys(UNIT_DEFS);
+  let maxType = 'infantry', maxCount = 0;
+  for(const [t,c] of Object.entries(selected)) { if(c > maxCount) { maxCount = c; maxType = t; } }
+  const counterType = Object.entries(UNIT_DEFS).find(([k,v]) => v.counter === maxType)?.[0] || 'infantry';
+  comp[counterType] = 3 + Math.floor(Math.random()*2);
+  const remaining = MAX_UNITS - comp[counterType];
+  for(let i = 0; i < remaining; i++) {
+    const t = types[Math.floor(Math.random()*types.length)];
+    comp[t]++;
+  }
+  return comp;
+}
+
+// ===== GAME LOOP =====
+function gameLoop(now) {
+  const dt = Math.min((now - lastTime) / 1000, 0.1);
+  lastTime = now;
+  if(phase !== 'combat') return;
+
+  battleTimer -= dt;
+  updateTimer();
+
+  // Fog of war: 10Hz vision update
+  visionTickTimer += dt;
+  if(visionTickTimer >= FOG_TICK_INTERVAL) {
+    visionTickTimer -= FOG_TICK_INTERVAL;
+    updateVision();
+  }
+
+  updateUnits(dt);
+  updateBuildings(dt);
+  updateProjectiles(dt);
+  updateParticles(dt);
+  updateAdvisor(dt);
+  updateMoveCursor(dt);
+  checkWinCondition();
+
+  render();
+  animId = requestAnimationFrame(gameLoop);
+}
+
+function updateTimer() {
+  const t = Math.max(0, Math.ceil(battleTimer));
+  const m = String(Math.floor(t/60)).padStart(2,'0');
+  const s = String(t%60).padStart(2,'0');
+  $('timer').textContent = m + ':' + s;
+}
+
+// ===== UTILITY =====
+function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+function cellDist(a, b) { return dist(a, b) / CELL; }
+
+function findNearestEnemy(unit) {
+  let best = null, bestD = Infinity;
+  const enemies = units.filter(u => u.alive && u.team !== unit.team);
+  const eBldgs = buildings.filter(b => b.alive && b.team !== unit.team);
+  for(const e of enemies) { const d = dist(unit, e); if(d < bestD) { bestD = d; best = e; } }
+  for(const b of eBldgs) {
+    if(b.type === 'tower' && !hasLineOfSight(b.x, b.y, unit.x, unit.y)) continue;
+    const d = dist(unit, b); if(d < bestD) { bestD = d; best = b; }
+  }
+  return best;
+}
+
+// Find nearest visible enemy (for player units)
+function findNearestVisibleEnemy(unit) {
+  let best = null, bestD = Infinity;
+  const enemies = units.filter(u => u.alive && u.team !== unit.team && isEntityVisibleToPlayer(u));
+  const eBldgs = buildings.filter(b => b.alive && b.team !== unit.team && isBuildingVisibleToPlayer(b));
+  for(const e of enemies) { const d = dist(unit, e); if(d < bestD) { bestD = d; best = e; } }
+  for(const b of eBldgs) { const d = dist(unit, b); if(d < bestD) { bestD = d; best = b; } }
+  return best;
+}
+
+function findPreferredTarget(unit) {
+  const enemies = units.filter(u => u.alive && u.team !== unit.team);
+  let best = null, bestD = Infinity;
+  const countered = enemies.filter(e => unit.counter === e.type);
+  const pool = countered.length > 0 ? countered : enemies;
+  for(const e of pool) { const d = dist(unit, e); if(d < bestD) { bestD = d; best = e; } }
+  return best || findNearestEnemy(unit);
+}
+
+// ===== UNIT AI & MOVEMENT =====
+function updateUnits(dt) {
+  for(const u of units) {
+    if(!u.alive) { u.deathTimer -= dt; continue; }
+    u.atkCooldown = Math.max(0, u.atkCooldown - dt);
+    u.flashTimer = Math.max(0, u.flashTimer - dt);
+
+    // Retreating
+    if(u.retreating) {
+      if(u.team === 'player' && playerCommand && playerCommand.type === 'focus' && playerCommand.target && playerCommand.target.alive) {
+        u.retreating = false;
+      } else {
+        const hq = buildings.find(b => b.type === 'hq' && b.team === u.team && b.alive);
+        if(hq) moveToward(u, hq.x, hq.y, dt);
+        if(u.hp >= u.maxHp) u.retreating = false;
+        continue;
+      }
+    }
+
+    // Auto-retreat for enemy AI
+    if(u.team === 'enemy' && u.hp < u.maxHp * 0.2) {
+      u.retreating = true; u.target = null; continue;
+    }
+
+    // Player commands
+    if(u.team === 'player' && playerCommand) {
+      handlePlayerCommand(u, dt);
+      continue;
+    }
+
+    // Default AI behavior
+    if(u.team === 'player') {
+      // Player units: only auto-engage VISIBLE enemies
+      if(!u.target || !u.target.alive || (u.target.team === 'enemy' && !isEntityVisibleToPlayer(u.target))) {
+        u.target = findNearestVisibleEnemy(u);
+      }
+    } else {
+      // Enemy AI: god view
+      if(!u.target || !u.target.alive) u.target = findPreferredTarget(u);
+    }
+
+    if(u.target) {
+      const d = cellDist(u, u.target);
+      if(d <= u.range) {
+        moveToAttackSlot(u, u.target, dt);
+        if(u.atkCooldown <= 0) {
+          // Player units: check visibility + LOS
+          if(u.team === 'player' && u.target.team === 'enemy' && !isEntityVisibleToPlayer(u.target)) {
+            u.target = null; // Lost vision, drop target
+            continue;
+          }
+          if(u.range > 2 && !hasLineOfSight(u.x, u.y, u.target.x, u.target.y)) {
+            moveToward(u, u.target.x, u.target.y, dt);
+          } else {
+            attackTarget(u, u.target);
+            u.atkCooldown = u.atkSpeed;
+          }
+        }
+      } else {
+        moveToward(u, u.target.x, u.target.y, dt);
+      }
+    }
+  }
+
+  // Clear player command after timeout
+  if(playerCommand) {
+    playerCommand._timer = (playerCommand._timer || 0) + dt;
+    if(playerCommand._timer > 5) playerCommand = null;
+  }
+
+  // Remove long-dead units
+  units = units.filter(u => u.alive || u.deathTimer > 0);
+
+  // Separation
+  for(let i = 0; i < units.length; i++) {
+    if(!units[i].alive) continue;
+    for(let j = i+1; j < units.length; j++) {
+      if(!units[j].alive) continue;
+      const a = units[i], b = units[j];
+      const d = dist(a, b);
+      const minD = CELL * 0.6;
+      if(d < minD && d > 0) {
+        const push = (minD - d) * 0.3;
+        const dx = (a.x - b.x)/d, dy = (a.y - b.y)/d;
+        a.x += dx*push; a.y += dy*push;
+        b.x -= dx*push; b.y -= dy*push;
+      }
+    }
+  }
+}
+
+function moveToAttackSlot(u, target, dt) {
+  const attackers = units.filter(o => o.alive && o.team === u.team && o.target === target);
+  const count = attackers.length;
+  if(count <= 1) return;
+  const idx = attackers.indexOf(u);
+  const angleSpread = (Math.PI * 2) / count;
+  const angle = angleSpread * idx;
+  const rangePx = u.range * CELL * 0.85;
+  const slotX = target.x + Math.cos(angle) * rangePx;
+  const slotY = target.y + Math.sin(angle) * rangePx;
+  const d = Math.hypot(u.x - slotX, u.y - slotY);
+  if(d > CELL * 0.3) moveToward(u, slotX, slotY, dt);
+}
+
+function handlePlayerCommand(u, dt) {
+  const cmd = playerCommand;
+
+  if(cmd.type === 'move') {
+    // Movement-first: move toward destination, do NOT auto-attack en route
+    moveToward(u, cmd.x, cmd.y, dt);
+    if(moveCursor && dist(u, {x:cmd.x,y:cmd.y}) < CELL * 2) moveCursor = null;
+
+    // Check if arrived at destination
+    const arrived = dist(u, {x:cmd.x, y:cmd.y}) < CELL * 1;
+    if(arrived) {
+      // Auto-engage visible enemies in range
+      const nearby = findNearestVisibleEnemy(u);
+      if(nearby && cellDist(u, nearby) <= u.range && u.atkCooldown <= 0) {
+        if(u.range <= 2 || hasLineOfSight(u.x, u.y, nearby.x, nearby.y)) {
+          attackTarget(u, nearby);
+          u.atkCooldown = u.atkSpeed;
+        }
+      }
+    }
+
+  } else if(cmd.type === 'focus' && cmd.target && cmd.target.alive) {
+    // Focus fire: check if target is still visible
+    const targetVisible = cmd.target.team === 'player' || isEntityVisibleToPlayer(cmd.target);
+
+    if(!targetVisible) {
+      // Lost vision: stop attacking, do NOT auto-switch target
+      u.target = null;
+      // Stay in place (don't chase invisible target)
+    } else {
+      u.target = cmd.target;
+      const d = cellDist(u, u.target);
+      if(d <= u.range) {
+        moveToAttackSlot(u, u.target, dt);
+        if(u.atkCooldown <= 0) {
+          if(u.range > 2 && !hasLineOfSight(u.x, u.y, u.target.x, u.target.y)) {
+            moveToward(u, u.target.x, u.target.y, dt);
+          } else {
+            attackTarget(u, u.target);
+            u.atkCooldown = u.atkSpeed;
+          }
+        }
+      } else {
+        moveToward(u, u.target.x, u.target.y, dt);
+      }
+    }
+
+  } else if(cmd.type === 'retreat' && cmd.target === u) {
+    u.retreating = true;
+
+  } else {
+    // Fallback: auto-engage visible enemies only
+    if(!u.target || !u.target.alive || (u.target.team === 'enemy' && !isEntityVisibleToPlayer(u.target))) {
+      u.target = findNearestVisibleEnemy(u);
+    }
+    if(u.target) {
+      if(cellDist(u, u.target) <= u.range) {
+        moveToAttackSlot(u, u.target, dt);
+        if(u.atkCooldown <= 0) { attackTarget(u, u.target); u.atkCooldown = u.atkSpeed; }
+      } else moveToward(u, u.target.x, u.target.y, dt);
+    }
+  }
+}
+
+function moveToward(u, tx, ty, dt) {
+  const dx = tx - u.x, dy = ty - u.y;
+  const d = Math.hypot(dx, dy);
+  if(d < 2) return;
+
+  let dirX = dx / d, dirY = dy / d;
+  const step = u.speed * CELL * dt;
+
+  // Obstacle avoidance
+  const lookAhead = CELL * 0.8;
+  const nextX = u.x + dirX * lookAhead;
+  const nextY = u.y + dirY * lookAhead;
+
+  if(isObstacleAt(nextX, nextY)) {
+    const perpX = -dirY, perpY = dirX;
+    const alt1X = u.x + (dirX*0.5 + perpX) * lookAhead;
+    const alt1Y = u.y + (dirY*0.5 + perpY) * lookAhead;
+    const alt2X = u.x + (dirX*0.5 - perpX) * lookAhead;
+    const alt2Y = u.y + (dirY*0.5 - perpY) * lookAhead;
+    const alt1B = isObstacleAt(alt1X, alt1Y);
+    const alt2B = isObstacleAt(alt2X, alt2Y);
+    if(!alt1B && (alt2B || Math.random() > 0.5)) {
+      dirX = dirX*0.5 + perpX; dirY = dirY*0.5 + perpY;
+    } else if(!alt2B) {
+      dirX = dirX*0.5 - perpX; dirY = dirY*0.5 - perpY;
+    }
+    const nd = Math.hypot(dirX, dirY);
+    if(nd > 0) { dirX /= nd; dirY /= nd; }
+  }
+
+  const newX = u.x + dirX * Math.min(step, d);
+  const newY = u.y + dirY * Math.min(step, d);
+
+  if(!isObstacleAt(newX, newY)) {
+    u.x = newX; u.y = newY;
+  } else {
+    const sx = u.x + dirX * Math.min(step, d);
+    if(!isObstacleAt(sx, u.y)) u.x = sx;
+    const sy = u.y + dirY * Math.min(step, d);
+    if(!isObstacleAt(u.x, sy)) u.y = sy;
+  }
+
+  u.x = Math.max(CELL/2, Math.min(W - CELL/2, u.x));
+  u.y = Math.max(CELL/2, Math.min(H - CELL/2, u.y));
+}
+
+function attackTarget(attacker, target) {
+  let dmg = attacker.atk;
+  if(target.type && attacker.counter === target.type) dmg = Math.floor(dmg * COUNTER_BONUS);
+  if(attacker.range > 2) {
+    projectiles.push({ x:attacker.x, y:attacker.y, tx:target.x, ty:target.y, target, dmg, speed:300, team:attacker.team });
+  } else {
+    applyDamage(target, dmg);
+  }
+}
+
+function applyDamage(target, dmg) {
+  target.hp -= dmg;
+  target.flashTimer = 0.15;
+  const offsetY = target.type === 'hq' ? -CELL*1.2 : target.type === 'tower' ? -CELL*0.9 : -CELL*0.7;
+  const offsetX = (Math.random()-0.5) * CELL * 0.4;
+  spawnDmgNumber(target.x + offsetX, target.y + offsetY, dmg, target.team === 'player' ? '#ef4444' : '#22c55e');
+  for(let i = 0; i < 3; i++) {
+    particles.push({ x:target.x, y:target.y, vx:(Math.random()-.5)*80, vy:(Math.random()-.5)*80-30, life:0.4, color:target.team==='player'?'#3b82f6':'#ef4444', size:3 });
+  }
+  if(target.hp <= 0) {
+    target.hp = 0; target.alive = false;
+    if(target.deathTimer !== undefined) target.deathTimer = 0.5;
+    for(let i = 0; i < 8; i++) {
+      particles.push({ x:target.x, y:target.y, vx:(Math.random()-.5)*120, vy:(Math.random()-.5)*120, life:0.6, color:'#f59e0b', size:4 });
+    }
+    if(selectedTarget && selectedTarget.entity === target) selectedTarget = null;
+    // Remove from explored buildings if destroyed
+    if(target.type === 'hq' || target.type === 'tower') {
+      exploredBuildings.delete(target.id);
+    }
+  }
+  updateHQBars();
+}
+
+function updateHQBars() {
+  const ph = buildings.find(b => b.type==='hq' && b.team==='player');
+  const eh = buildings.find(b => b.type==='hq' && b.team==='enemy');
+  if(ph) $('player-hq-hp').style.width = (ph.hp/ph.maxHp*100)+'%';
+  // Enemy HQ bar: only show real HP if visible, otherwise show last known
+  if(eh) {
+    if(isBuildingVisibleToPlayer(eh)) {
+      $('enemy-hq-hp').style.width = (eh.hp/eh.maxHp*100)+'%';
+    }
+    // If not visible, bar stays at last known value (no update)
+  }
+}
+
+function spawnDmgNumber(canvasX, canvasY, dmg, color) {
+  const rect = canvas.getBoundingClientRect();
+  const screenX = rect.left + canvasX * canvasScale;
+  const screenY = rect.top + canvasY * canvasScale;
+  const el = document.createElement('div');
+  el.className = 'dmg-num';
+  el.style.left = screenX + 'px';
+  el.style.top = screenY + 'px';
+  el.style.color = color;
+  el.textContent = '-' + dmg;
+  $('combat-screen').appendChild(el);
+  setTimeout(() => el.remove(), 800);
+}
+
+// ===== BUILDINGS =====
+function updateBuildings(dt) {
+  for(const b of buildings) {
+    if(!b.alive) continue;
+    b.flashTimer = Math.max(0, b.flashTimer - dt);
+    if(b.atk <= 0) continue;
+    b.atkCooldown = Math.max(0, b.atkCooldown - dt);
+    if(b.atkCooldown > 0) continue;
+
+    const enemies = units.filter(u => u.alive && u.team !== b.team);
+
+    // Player towers: only attack visible enemies
+    if(b.team === 'player') {
+      let best = null, bestD = Infinity;
+      for(const e of enemies) {
+        if(!isEntityVisibleToPlayer(e)) continue;
+        const d = cellDist(b, e);
+        if(d < bestD && d <= b.range && hasLineOfSight(b.x, b.y, e.x, e.y)) {
+          bestD = d; best = e;
+        }
+      }
+      if(best) {
+        projectiles.push({ x:b.x, y:b.y, tx:best.x, ty:best.y, target:best, dmg:b.atk, speed:250, team:b.team });
+        b.atkCooldown = b.atkSpeed;
+      }
+    } else {
+      // Enemy towers: god view
+      let best = null, bestD = Infinity;
+      for(const e of enemies) {
+        const d = cellDist(b, e);
+        if(d < bestD && d <= b.range && hasLineOfSight(b.x, b.y, e.x, e.y)) {
+          bestD = d; best = e;
+        }
+      }
+      if(best) {
+        projectiles.push({ x:b.x, y:b.y, tx:best.x, ty:best.y, target:best, dmg:b.atk, speed:250, team:b.team });
+        b.atkCooldown = b.atkSpeed;
+      }
+    }
+  }
+}
+
+// ===== PROJECTILES =====
+function updateProjectiles(dt) {
+  for(const p of projectiles) {
+    const dx = p.tx - p.x, dy = p.ty - p.y;
+    const d = Math.hypot(dx, dy);
+    const step = p.speed * dt;
+    if(d < step + 5) {
+      if(p.target && p.target.alive) applyDamage(p.target, p.dmg);
+      p.done = true;
+    } else {
+      p.x += (dx/d)*step; p.y += (dy/d)*step;
+      if(p.target && p.target.alive) { p.tx = p.target.x; p.ty = p.target.y; }
+    }
+  }
+  projectiles = projectiles.filter(p => !p.done);
+}
+
+// ===== PARTICLES =====
+function updateParticles(dt) {
+  for(const p of particles) {
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    p.life -= dt;
+  }
+  particles = particles.filter(p => p.life > 0);
+}
+
+function updateMoveCursor(dt) {
+  if(moveCursor) {
+    moveCursor.timer -= dt;
+    if(moveCursor.timer <= 0) moveCursor = null;
+  }
+}
+
+// ===== ADVISOR =====
+const ADVICE = [
+  { cond: () => { const ec = units.filter(u=>u.alive&&u.team==='enemy'&&u.type==='cavalry'); return ec.length >= 2; }, msg:'敌方骑兵压力较大，建议集中步兵拦截！', action:'focusCavalry' },
+  { cond: () => { const ea = units.filter(u=>u.alive&&u.team==='enemy'&&u.type==='archer'); return ea.length >= 2; }, msg:'敌方射手火力密集，建议派骑兵突袭！', action:'focusArcher' },
+  { cond: () => { const low = units.filter(u=>u.alive&&u.team==='player'&&u.hp<u.maxHp*0.3); return low.length >= 2; }, msg:'多个单位血量告急，建议撤退重组！', action:'retreatLow' },
+  { cond: () => { const eh = buildings.find(b=>b.type==='hq'&&b.team==='enemy'); return eh && eh.hp < eh.maxHp*0.5; }, msg:'敌方主堡受损严重，全力进攻！', action:'pushHQ' },
+  { cond: () => true, msg:'战场局势胶着，注意兵种克制关系。', action:null },
+];
+
+function updateAdvisor(dt) {
+  if(advisorActive) return;
+  advisorTimer -= dt;
+  if(advisorTimer <= 0) {
+    advisorTimer = 15 + Math.random()*10;
+    const advice = ADVICE.find(a => a.cond()) || ADVICE[ADVICE.length-1];
+    showAdvisor(advice.msg, advice.action);
+  }
+}
+
+function showAdvisor(msg, action) {
+  advisorActive = true;
+  advisorAction = action;
+  $('advisor-msg').textContent = msg;
+  $('advisor-panel').classList.add('show');
+}
+
+function acceptAdvice() {
+  if(advisorAction === 'focusCavalry') {
+    const ec = units.find(u => u.alive && u.team === 'enemy' && u.type === 'cavalry');
+    if(ec) { playerCommand = { type:'focus', target:ec, _timer:0 }; selectedTarget = { entity:ec, glowColor:'#ef4444' }; }
+  } else if(advisorAction === 'focusArcher') {
+    const ea = units.find(u => u.alive && u.team === 'enemy' && u.type === 'archer');
+    if(ea) { playerCommand = { type:'focus', target:ea, _timer:0 }; selectedTarget = { entity:ea, glowColor:'#ef4444' }; }
+  } else if(advisorAction === 'retreatLow') {
+    units.filter(u => u.alive && u.team === 'player' && u.hp < u.maxHp*0.3).forEach(u => u.retreating = true);
+  } else if(advisorAction === 'pushHQ') {
+    const eh = buildings.find(b => b.type==='hq' && b.team==='enemy' && b.alive);
+    if(eh) { playerCommand = { type:'move', x:eh.x, y:eh.y, _timer:0 }; moveCursor = { x:eh.x, y:eh.y, timer:3 }; }
+  }
+  dismissAdvisor();
+}
+
+function dismissAdvisor() {
+  advisorActive = false;
+  $('advisor-panel').classList.remove('show');
+}
+
+// ===== WIN CONDITION =====
+function checkWinCondition() {
+  const ph = buildings.find(b => b.type==='hq' && b.team==='player');
+  const eh = buildings.find(b => b.type==='hq' && b.team==='enemy');
+  if(eh && !eh.alive) { endGame('win'); return; }
+  if(ph && !ph.alive) { endGame('lose'); return; }
+  if(battleTimer <= 0) {
+    const pPower = calcPower('player');
+    const ePower = calcPower('enemy');
+    if(pPower > ePower) endGame('win');
+    else if(ePower > pPower) endGame('lose');
+    else endGame('draw');
+  }
+}
+
+function calcPower(team) {
+  let power = 0;
+  const hq = buildings.find(b => b.type==='hq' && b.team===team);
+  if(hq && hq.alive) power += hq.hp;
+  units.filter(u => u.alive && u.team === team).forEach(u => power += u.hp);
+  buildings.filter(b => b.alive && b.team === team && b.type === 'tower').forEach(b => power += b.hp);
+  return power;
+}
+
+function endGame(result) {
+  phase = 'result';
+  if(animId) cancelAnimationFrame(animId);
+  const title = $('result-title');
+  if(result === 'win') { title.textContent = '胜 利'; title.className = 'win'; }
+  else if(result === 'lose') { title.textContent = '战 败'; title.className = 'lose'; }
+  else { title.textContent = '平 局'; title.className = 'draw'; }
+
+  const pAlive = units.filter(u => u.team==='player' && u.alive).length;
+  const eLost = MAX_UNITS - units.filter(u => u.team==='enemy' && u.alive).length;
+  const pLost = MAX_UNITS - pAlive;
+  const timeUsed = BATTLE_TIME - Math.max(0, Math.ceil(battleTimer));
+  const m = Math.floor(timeUsed/60), s = timeUsed%60;
+
+  $('result-stats').innerHTML = `
+    <div>⏱ 用时: ${m}分${s}秒</div>
+    <div>🔵 我方损失: ${pLost} 个单位</div>
+    <div>🔴 敌方损失: ${eLost} 个单位</div>
+    <div>🔵 我方剩余战力: ${calcPower('player')}</div>
+    <div>🔴 敌方剩余战力: ${calcPower('enemy')}</div>
+  `;
+  showScreen('result-screen');
+}
+
+// ===== RENDERING =====
+function render() {
+  ctx.clearRect(0, 0, W, H);
+
+  // 1. Terrain
+  drawGrid();
+
+  // 2. Obstacles (always drawn, fog covers them)
+  drawObstacles();
+
+  // 3. Player buildings (always visible)
+  drawPlayerBuildings();
+
+  // 4. Player units (always visible)
+  drawPlayerUnits();
+
+  // 5. Visible enemy buildings (real-time)
+  drawVisibleEnemyBuildings();
+
+  // 6. Visible enemy units (real-time)
+  drawVisibleEnemyUnits();
+
+  // 7. Projectiles & particles
+  drawProjectiles();
+  drawParticles();
+
+  // 8. Fog overlay (covers unexplored & explored shadow)
+  drawFogOverlay();
+
+  // 9. Building shadows in explored areas (on top of fog)
+  drawBuildingShadows();
+
+  // 10. UI: selection glow, move cursor, death skulls
+  drawSelectionGlow();
+  drawMoveCursor();
+  drawDeathSkulls();
+}
+
+function drawGrid() {
+  ctx.strokeStyle = '#151d30';
+  ctx.lineWidth = 1;
+  for(let x = 0; x <= W; x += CELL) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(let y = 0; y <= H; y += CELL) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+  ctx.fillStyle = 'rgba(59,130,246,0.03)';
+  ctx.fillRect(0, 0, W/2, H);
+  ctx.fillStyle = 'rgba(239,68,68,0.03)';
+  ctx.fillRect(W/2, 0, W/2, H);
+}
+
+function drawObstacles() {
+  for(const obs of obstacles) {
+    const x = obs.gx * CELL, y = obs.gy * CELL;
+    ctx.fillStyle = '#1a2035';
+    ctx.fillRect(x+2, y+2, CELL-4, CELL-4);
+    ctx.strokeStyle = '#2a3550';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x+2, y+2, CELL-4, CELL-4);
+    ctx.fillStyle = '#232d45';
+    ctx.fillRect(x+8, y+8, CELL-16, CELL-16);
+    ctx.font = '14px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#3a4a6a';
+    ctx.fillText('🪨', x+CELL/2, y+CELL/2);
+  }
+}
+
+function drawPlayerBuildings() {
+  for(const b of buildings) {
+    if(!b.alive || b.team !== 'player') continue;
+    drawSingleBuilding(b, false);
+  }
+}
+
+function drawVisibleEnemyBuildings() {
+  for(const b of buildings) {
+    if(!b.alive || b.team === 'player') continue;
+    if(!isBuildingVisibleToPlayer(b)) continue;
+    drawSingleBuilding(b, false);
+  }
+}
+
+function drawSingleBuilding(b, asShadow) {
+  const isPlayer = b.team === 'player';
+  const color = isPlayer ? '#3b82f6' : '#ef4444';
+
+  if(asShadow) {
+    // Building shadow: desaturated, 40% alpha, no HP bar
+    ctx.save();
+    ctx.globalAlpha = 0.4;
+    ctx.filter = 'grayscale(100%)';
+
+    if(b.type === 'hq') {
+      ctx.fillStyle = '#555';
+      ctx.globalAlpha = 0.15;
+      ctx.fillRect(b.x-CELL, b.y-CELL, CELL*2, CELL*2);
+      ctx.globalAlpha = 0.4;
+      ctx.strokeStyle = '#555';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(b.x-CELL, b.y-CELL, CELL*2, CELL*2);
+      ctx.font = '24px sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#888';
+      ctx.fillText('🏰', b.x, b.y);
+    } else {
+      ctx.fillStyle = '#555';
+      ctx.globalAlpha = 0.15;
+      ctx.beginPath(); ctx.arc(b.x, b.y, CELL*0.6, 0, Math.PI*2); ctx.fill();
+      ctx.globalAlpha = 0.4;
+      ctx.strokeStyle = '#555'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(b.x, b.y, CELL*0.6, 0, Math.PI*2); ctx.stroke();
+      ctx.font = '18px sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#888';
+      ctx.fillText('🗼', b.x, b.y);
+    }
+
+    ctx.restore();
+    return;
+  }
+
+  // Normal building rendering
+  if(b.flashTimer > 0) {
+    ctx.fillStyle = '#fff';
+    ctx.globalAlpha = 0.5;
+    ctx.fillRect(b.x-CELL*.8, b.y-CELL*.8, CELL*1.6, CELL*1.6);
+    ctx.globalAlpha = 1;
+  }
+
+  if(b.type === 'hq') {
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.25;
+    ctx.fillRect(b.x-CELL, b.y-CELL, CELL*2, CELL*2);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(b.x-CELL, b.y-CELL, CELL*2, CELL*2);
+    for(let i = 0; i < 4; i++) {
+      ctx.fillStyle = color;
+      ctx.fillRect(b.x-CELL+i*20+2, b.y-CELL-6, 10, 8);
+    }
+    ctx.font = '24px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('🏰', b.x, b.y);
+    drawHPBar(b.x-CELL, b.y+CELL+4, CELL*2, 5, b.hp, b.maxHp, color);
+  } else {
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.2;
+    ctx.beginPath(); ctx.arc(b.x, b.y, CELL*0.6, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = color; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(b.x, b.y, CELL*0.6, 0, Math.PI*2); ctx.stroke();
+    ctx.strokeStyle = color; ctx.lineWidth = 0.5; ctx.globalAlpha = 0.15;
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.range*CELL, 0, Math.PI*2); ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.font = '18px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('🗼', b.x, b.y);
+    drawHPBar(b.x-15, b.y+CELL*0.7, 30, 4, b.hp, b.maxHp, color);
+  }
+}
+
+function drawPlayerUnits() {
+  for(const u of units) {
+    if(!u.alive || u.team !== 'player') continue;
+    drawSingleUnit(u);
+  }
+}
+
+function drawVisibleEnemyUnits() {
+  for(const u of units) {
+    if(!u.alive || u.team === 'player') continue;
+    if(!isEntityVisibleToPlayer(u)) continue;
+    drawSingleUnit(u);
+  }
+}
+
+function drawSingleUnit(u) {
+  const def = UNIT_DEFS[u.type];
+  const isPlayer = u.team === 'player';
+  const baseColor = isPlayer ? def.color : def.eColor;
+
+  if(u.flashTimer > 0) {
+    ctx.fillStyle = '#fff';
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath(); ctx.arc(u.x, u.y, CELL*0.45, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  if(u.retreating) {
+    ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.5;
+    ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.arc(u.x, u.y, CELL*0.5, 0, Math.PI*2); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.fillStyle = baseColor;
+  ctx.globalAlpha = 0.3;
+  ctx.beginPath(); ctx.arc(u.x, u.y, CELL*0.4, 0, Math.PI*2); ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = baseColor;
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(u.x, u.y, CELL*0.4, 0, Math.PI*2); ctx.stroke();
+
+  ctx.font = '18px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(def.icon, u.x, u.y);
+
+  drawHPBar(u.x-14, u.y-CELL*0.5, 28, 3, u.hp, u.maxHp, baseColor);
+
+  ctx.fillStyle = isPlayer ? '#3b82f6' : '#ef4444';
+  ctx.beginPath(); ctx.arc(u.x, u.y+CELL*0.35, 3, 0, Math.PI*2); ctx.fill();
+}
+
+function drawDeathSkulls() {
+  for(const u of units) {
+    if(u.alive || u.deathTimer <= 0) continue;
+    // Only show death skull if in visible area
+    if(u.team === 'enemy' && !isEntityVisibleToPlayer(u)) continue;
+    ctx.globalAlpha = u.deathTimer * 2;
+    ctx.font = '20px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('💀', u.x, u.y);
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawHPBar(x, y, w, h, hp, maxHp, color) {
+  ctx.fillStyle = '#1e293b';
+  ctx.fillRect(x, y, w, h);
+  const pct = Math.max(0, hp / maxHp);
+  ctx.fillStyle = pct > 0.5 ? color : pct > 0.25 ? '#f59e0b' : '#ef4444';
+  ctx.fillRect(x, y, w * pct, h);
+}
+
+function drawProjectiles() {
+  for(const p of projectiles) {
+    ctx.fillStyle = p.team === 'player' ? '#60a5fa' : '#fbbf24';
+    ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = p.team === 'player' ? 'rgba(96,165,250,0.3)' : 'rgba(251,191,36,0.3)';
+    ctx.lineWidth = 2;
+    const dx = p.tx-p.x, dy = p.ty-p.y, d = Math.hypot(dx,dy);
+    if(d > 1) {
+      ctx.beginPath(); ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x-(dx/d)*10, p.y-(dy/d)*10); ctx.stroke();
+    }
+  }
+}
+
+function drawParticles() {
+  for(const p of particles) {
+    ctx.globalAlpha = Math.max(0, p.life / 0.6);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x-p.size/2, p.y-p.size/2, p.size, p.size);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ===== FOG OF WAR RENDERING =====
+
+function drawFogOverlay() {
+  if(!fogGrid || !cloudCanvas || !fogOverlayCtx) return;
+
+  const fCtx = fogOverlayCtx;
+  fCtx.clearRect(0, 0, W, H);
+
+  for(let gy = 0; gy < ROWS; gy++) {
+    for(let gx = 0; gx < COLS; gx++) {
+      const state = fogGrid[gy * COLS + gx];
+      const px = gx * CELL, py = gy * CELL;
+
+      if(state === FOG_UNEXPLORED) {
+        // L2: Cloud texture
+        const sx = (px % cloudCanvas.width);
+        const sy = (py % cloudCanvas.height);
+        fCtx.drawImage(cloudCanvas, sx, sy, CELL, CELL, px, py, CELL, CELL);
+      } else if(state === FOG_EXPLORED) {
+        // L1: Semi-transparent dark overlay
+        fCtx.fillStyle = 'rgba(20, 20, 30, 0.7)';
+        fCtx.fillRect(px, py, CELL, CELL);
+      }
+      // FOG_VISIBLE: transparent (no overlay)
+    }
+  }
+
+  ctx.drawImage(fogOverlayCanvas, 0, 0);
+}
+
+// Building shadows in explored shadow areas
+function drawBuildingShadows() {
+  for(const [id, info] of exploredBuildings) {
+    // Find the actual building
+    const b = buildings.find(bb => bb.id === id);
+    if(!b || !b.alive) continue; // Destroyed buildings lose their shadow
+
+    // Only draw shadow if NOT currently visible (visible ones are drawn normally)
+    if(isBuildingVisibleToPlayer(b)) continue;
+
+    // Only draw if cell is explored (not unexplored)
+    if(!isCellExplored(b.gx, b.gy)) continue;
+
+    drawSingleBuilding(b, true);
+  }
+}
+
+// ===== SELECTION GLOW =====
+function drawSelectionGlow() {
+  if(!selectedTarget || !selectedTarget.entity) {
+    selectedTarget = null;
+    return;
+  }
+  const e = selectedTarget.entity;
+  // For enemy entities, check visibility
+  if(e.team === 'enemy' && e.alive) {
+    const gx = Math.floor(e.x / CELL), gy = Math.floor(e.y / CELL);
+    if(!isCellVisible(gx, gy) && !isCellExplored(gx, gy)) {
+      selectedTarget = null;
+      return;
+    }
+  }
+  if(e.alive === false) { selectedTarget = null; return; }
+
+  const color = selectedTarget.glowColor;
+  const time = performance.now() / 1000;
+  const pulse = 0.6 + Math.sin(time * 4) * 0.2;
+
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = e.type === 'hq' ? 4 : 2.5;
+  ctx.globalAlpha = pulse;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 15;
+
+  if(e.type === 'hq') {
+    ctx.strokeRect(e.x-CELL*1.1, e.y-CELL*1.1, CELL*2.2, CELL*2.2);
+  } else if(e.type === 'tower') {
+    ctx.beginPath(); ctx.arc(e.x, e.y, CELL*0.75, 0, Math.PI*2); ctx.stroke();
+  } else {
+    ctx.beginPath(); ctx.arc(e.x, e.y, CELL*0.55, 0, Math.PI*2); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawMoveCursor() {
+  if(!moveCursor) return;
+  const alpha = Math.min(1, moveCursor.timer * 2);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.font = '22px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const pulse = 1 + Math.sin(performance.now() / 200) * 0.1;
+  ctx.translate(moveCursor.x, moveCursor.y);
+  ctx.scale(pulse, pulse);
+  ctx.fillText('👆', 0, 0);
+  ctx.restore();
+}
+
+// ===== INPUT HANDLING (with fog awareness) =====
+canvas.addEventListener('click', e => {
+  if(phase !== 'combat') return;
+  const rect = canvas.getBoundingClientRect();
+  const mx = (e.clientX - rect.left) * (W / rect.width);
+  const my = (e.clientY - rect.top) * (H / rect.height);
+  const clickGx = Math.floor(mx / CELL);
+  const clickGy = Math.floor(my / CELL);
+
+  const ring = document.createElement('div');
+  ring.className = 'click-ring';
+  ring.style.left = e.clientX + 'px';
+  ring.style.top = e.clientY + 'px';
+
+  // 1. Check visible enemy units
+  const clickedEnemy = units.find(u =>
+    u.alive && u.team === 'enemy' &&
+    isEntityVisibleToPlayer(u) &&
+    dist(u, {x:mx,y:my}) < CELL * 0.6
+  );
+  if(clickedEnemy) {
+    ring.classList.add('attack');
+    $('click-feedback').appendChild(ring);
+    setTimeout(() => ring.remove(), 600);
+    playerCommand = { type:'focus', target:clickedEnemy, _timer:0 };
+    selectedTarget = { entity:clickedEnemy, glowColor:'#ef4444' };
+    return;
+  }
+
+  // 2. Check enemy buildings (visible OR explored shadow)
+  const clickedEBldg = buildings.find(b => {
+    if(!b.alive || b.team !== 'enemy') return false;
+    const vis = isBuildingVisibleToPlayer(b);
+    const explored = isBuildingExplored(b);
+    if(!vis && !explored) return false;
+    return dist(b, {x:mx,y:my}) < CELL * (b.type === 'hq' ? 1.2 : 0.7);
+  });
+  if(clickedEBldg) {
+    ring.classList.add('attack');
+    $('click-feedback').appendChild(ring);
+    setTimeout(() => ring.remove(), 600);
+    playerCommand = { type:'focus', target:clickedEBldg, _timer:0 };
+    selectedTarget = { entity:clickedEBldg, glowColor: clickedEBldg.type === 'hq' ? '#ff2222' : '#f97316' };
+    return;
+  }
+
+  // 3. Check friendly units (retreat)
+  const clickedFriendly = units.find(u =>
+    u.alive && u.team === 'player' &&
+    dist(u, {x:mx,y:my}) < CELL * 0.6
+  );
+  if(clickedFriendly) {
+    ring.classList.add('retreat');
+    $('click-feedback').appendChild(ring);
+    setTimeout(() => ring.remove(), 600);
+    clickedFriendly.retreating = true;
+    selectedTarget = { entity:clickedFriendly, glowColor:'#fbbf24' };
+    return;
+  }
+
+  // 4. Click on empty area - move command (even in fog)
+  $('click-feedback').appendChild(ring);
+  setTimeout(() => ring.remove(), 600);
+  playerCommand = { type:'move', x:mx, y:my, _timer:0 };
+  moveCursor = { x:mx, y:my, timer:3 };
+  selectedTarget = null;
+});
+
+// ===== EVENT LISTENERS =====
+$('btn-start').addEventListener('click', startCombat);
+$('btn-replay').addEventListener('click', initDeploy);
+$('btn-accept').addEventListener('click', acceptAdvice);
+$('btn-reject').addEventListener('click', dismissAdvisor);
+
+// ===== INIT =====
+initDeploy();
+</script>
+</body>
+</html>
