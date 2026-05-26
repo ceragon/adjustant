@@ -1,0 +1,32 @@
+[
+  {
+    "game": 1,
+    "spawnConfig": 0,
+    "conflicts": []
+  },
+  {
+    "game": 2,
+    "spawnConfig": 1,
+    "conflicts": []
+  },
+  {
+    "game": 3,
+    "spawnConfig": 2,
+    "conflicts": []
+  },
+  {
+    "game": 4,
+    "spawnConfig": 3,
+    "conflicts": []
+  },
+  {
+    "game": 5,
+    "spawnConfig": 4,
+    "conflicts": []
+  },
+  {
+    "game": 6,
+    "spawnConfig": 5,
+    "conflicts": []
+  }
+]

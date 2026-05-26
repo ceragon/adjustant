@@ -1,0 +1,16 @@
+[
+  {
+    "id": "REG-003",
+    "severity": "Major",
+    "title": "开局半场可见",
+    "description": "可见率 45.0%",
+    "evidence": ""
+  },
+  {
+    "id": "DEEP-005",
+    "severity": "Critical",
+    "title": "障碍物阻挡出生点",
+    "description": "[{\"hq\":[3,10]},{\"hq\":[17,10]}]",
+    "evidence": ""
+  }
+]

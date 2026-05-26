@@ -1,0 +1,35 @@
+[
+  {
+    "time": 2000,
+    "label": "2s",
+    "stats": {
+      "total": 231,
+      "visible": 231,
+      "explored": 0,
+      "unexplored": 0,
+      "visiblePct": "100.0"
+    }
+  },
+  {
+    "time": 5000,
+    "label": "5s",
+    "stats": {
+      "total": 231,
+      "visible": 231,
+      "explored": 0,
+      "unexplored": 0,
+      "visiblePct": "100.0"
+    }
+  },
+  {
+    "time": 10000,
+    "label": "10s",
+    "stats": {
+      "total": 231,
+      "visible": 231,
+      "explored": 0,
+      "unexplored": 0,
+      "visiblePct": "100.0"
+    }
+  }
+]
