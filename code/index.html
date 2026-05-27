@@ -1453,6 +1453,16 @@ function checkWinCondition(){
   const eh=buildings.find(b=>b.type==='hq'&&b.team==='enemy');
   if(eh&&!eh.alive){endGame('win');return;}
   if(ph&&!ph.alive){endGame('lose');return;}
+  
+  // Early end: both sides dead and no projectiles
+  const pu=units.filter(u=>u.alive&&u.team==='player').length;
+  const eu=units.filter(u=>u.alive&&u.team==='enemy').length;
+  if(pu===0&&eu===0&&projectiles.length===0){
+    const pp=calcPower('player'),ep=calcPower('enemy');
+    if(pp>ep)endGame('win');else if(ep>pp)endGame('lose');else endGame('draw');
+    return;
+  }
+  
   if(battleTimer<=0){const pp=calcPower('player'),ep=calcPower('enemy');if(pp>ep)endGame('win');else if(ep>pp)endGame('lose');else endGame('draw');}
 }
 function calcPower(team){
