@@ -152,6 +152,7 @@ body::before{
 .hud-left,.hud-right{flex:1;position:relative;}
 .hud-right{text-align:right;}
 .hud-center{flex:0 0 auto;}
+.hud-right{display:flex;flex-direction:column;align-items:flex-end;gap:6px;}
 #timer{
   font-family:'Cinzel',serif;font-weight:900;font-size:1.8em;color:var(--gold-bright);
   font-variant-numeric:tabular-nums;letter-spacing:3px;
@@ -214,6 +215,14 @@ body::before{
 }
 .priority-btn:hover{border-color:var(--gold);color:var(--gold-bright);}
 .priority-btn.active{background:linear-gradient(180deg,#8a1a10,#4a0804);border-color:var(--gold-bright);color:var(--gold-bright);box-shadow:inset 0 0 0 1px rgba(0,0,0,.4),0 0 14px rgba(244,207,91,.3);}
+.btn-surrender{
+  padding:4px 16px;border:1px solid #8a3030;border-radius:2px;
+  background:linear-gradient(180deg,#4a1a10,#2a0a04);color:#ff6655;
+  font-size:.7em;cursor:pointer;transition:all .15s;text-align:center;
+  font-family:'Cinzel',serif;font-weight:600;letter-spacing:2px;
+  box-shadow:inset 0 0 0 1px rgba(0,0,0,.4),0 2px 4px rgba(0,0,0,.5);
+}
+.btn-surrender:hover{background:linear-gradient(180deg,#6a2a1a,#4a1008);border-color:#aa4040;color:#ff8877;}
 
 #result-screen{background:radial-gradient(ellipse at center,#2a1c0c 0%,#0a0604 100%);}
 .result-content{text-align:center;}
@@ -294,6 +303,7 @@ body::before{
       <div class="hud-right">
         <span class="bar-label">敌方主堡</span>
         <div class="hp-bar"><div id="enemy-hq-hp" class="hp-fill red"></div></div>
+        <button id="btn-surrender" class="btn-surrender">投降</button>
       </div>
     </div>
     <canvas id="game-canvas"></canvas>
@@ -2465,6 +2475,7 @@ $('btn-start').addEventListener('click',showFormationUI);
 $('btn-back-deploy').addEventListener('click',()=>{showScreen('deploy-screen');phase='deploy';});
 $('btn-confirm-formation').addEventListener('click',confirmFormation);
 $('btn-replay').addEventListener('click',initDeploy);
+$('btn-surrender').addEventListener('click',()=>{if(phase==='combat')endGame('lose');});
 $('btn-accept').addEventListener('click',acceptAdvice);
 $('btn-reject').addEventListener('click',dismissAdvisor);
 
