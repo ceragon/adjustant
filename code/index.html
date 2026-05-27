@@ -340,7 +340,7 @@ const MINIMAP_CELL = MINIMAP_SIZE / COLS; // 8px per cell
 const MINIMAP_MARGIN = 10;
 const FOG_UNEXPLORED = 0, FOG_EXPLORED = 1, FOG_VISIBLE = 2;
 const BUILDING_VISION_RANGE = 4;
-const FOG_TICK_INTERVAL = 0.1;
+const FOG_TICK_INTERVAL = 0.5;
 
 const UNIT_DEFS = {
   infantry:{name:'步兵',icon:'⚔',hp:160,atk:16,range:1.5,speed:1.2,atkSpeed:1.4,desc:'血量高、近战、攻击慢',color:'#3b82f6',eColor:'#ef4444',counter:'cavalry'},
@@ -989,12 +989,20 @@ function markDiamond(cx,cy,range){
     }
   }
 }
+function markDiamondAI(cx,cy,range){
+  for(let dx=-range;dx<=range;dx++){
+    for(let dy=-(range-Math.abs(dx));dy<=(range-Math.abs(dx));dy++){
+      const gx=cx+dx,gy=cy+dy;
+      if(gx>=0&&gx<COLS&&gy>=0&&gy<ROWS) aiFogGrid[gy*COLS+gx]=FOG_VISIBLE;
+    }
+  }
+}
 
 function updateVision(){
+  // Player fog: visible→explored, then re-mark
   for(let i=0;i<fogGrid.length;i++){if(fogGrid[i]===FOG_VISIBLE)fogGrid[i]=FOG_EXPLORED;}
   for(const u of units){if(u.alive&&u.team==='player') markDiamond(u.gx,u.gy,Math.ceil(u.range+1));}
   for(const b of buildings){if(b.alive&&b.team==='player') markDiamond(b.gx,b.gy,BUILDING_VISION_RANGE);}
-  // REG-003: Keep entire player half always visible every tick
   const playerHQ=buildings.find(b=>b.team==='player'&&b.type==='hq'&&b.alive);
   if(playerHQ){
     const isLeft=playerHQ.gx<COLS/2;
@@ -1010,6 +1018,18 @@ function updateVision(){
       exploredBuildings.set(b.id,{type:b.type,gx:b.gx,gy:b.gy,x:b.x,y:b.y,hp:b.hp,maxHp:b.maxHp,team:b.team,visible:true});
     } else if(exploredBuildings.has(b.id)){exploredBuildings.get(b.id).visible=false;}
   }
+  // Phase5: AI fog — same logic on aiFogGrid
+  for(let i=0;i<aiFogGrid.length;i++){if(aiFogGrid[i]===FOG_VISIBLE)aiFogGrid[i]=FOG_EXPLORED;}
+  for(const u of units){if(u.alive&&u.team==='enemy') markDiamondAI(u.gx,u.gy,Math.ceil(u.range+1));}
+  for(const b of buildings){if(b.alive&&b.team==='enemy') markDiamondAI(b.gx,b.gy,BUILDING_VISION_RANGE);}
+  const enemyHQ=buildings.find(b=>b.team==='enemy'&&b.type==='hq'&&b.alive);
+  if(enemyHQ){
+    const isLeft=enemyHQ.gx<COLS/2;
+    const halfCol=isLeft?Math.ceil(COLS/2):Math.floor(COLS/2);
+    for(let gx=isLeft?halfCol:0;gx<(isLeft?COLS:halfCol);gx++){
+      for(let gy=0;gy<ROWS;gy++) aiFogGrid[gy*COLS+gx]=FOG_VISIBLE;
+    }
+  }
 }
 
 function getFogCell(gx,gy){if(gx<0||gx>=COLS||gy<0||gy>=ROWS)return FOG_UNEXPLORED;return fogGrid[gy*COLS+gx];}
@@ -1018,6 +1038,12 @@ function isCellExplored(gx,gy){const v=getFogCell(gx,gy);return v===FOG_VISIBLE|
 function isEntityVisibleToPlayer(e){return isCellVisible(Math.floor(e.x/CELL),Math.floor(e.y/CELL));}
 function isBuildingVisibleToPlayer(b){return isCellVisible(b.gx,b.gy);}
 function isBuildingExplored(b){return exploredBuildings.has(b.id)&&isCellExplored(b.gx,b.gy);}
+
+// Phase5: AI fog helpers
+function getFogCellAI(gx,gy){if(gx<0||gx>=COLS||gy<0||gy>=ROWS)return FOG_UNEXPLORED;return aiFogGrid[gy*COLS+gx];}
+function isCellVisibleAI(gx,gy){return getFogCellAI(gx,gy)===FOG_VISIBLE;}
+function isEntityVisibleToAI(e){return isCellVisibleAI(Math.floor(e.x/CELL),Math.floor(e.y/CELL));}
+function isBuildingVisibleToAI(b){return isCellVisibleAI(b.gx,b.gy);}
 
 // ===== GAME LOOP =====
 function gameLoop(now){
@@ -1051,6 +1077,13 @@ function findNearestVisibleEnemy(unit){
   let best=null,bestD=Infinity;
   for(const e of units){if(!e.alive||e.team===unit.team||!isEntityVisibleToPlayer(e))continue;const d=dist(unit,e);if(d<bestD){bestD=d;best=e;}}
   for(const b of buildings){if(!b.alive||b.team===unit.team||!isBuildingVisibleToPlayer(b))continue;const d=dist(unit,b);if(d<bestD){bestD=d;best=b;}}
+  return best;
+}
+
+function findNearestVisibleEnemyAI(unit){
+  let best=null,bestD=Infinity;
+  for(const e of units){if(!e.alive||e.team===unit.team||!isEntityVisibleToAI(e))continue;const d=dist(unit,e);if(d<bestD){bestD=d;best=e;}}
+  for(const b of buildings){if(!b.alive||b.team===unit.team||!isBuildingVisibleToAI(b))continue;const d=dist(unit,b);if(d<bestD){bestD=d;best=b;}}
   return best;
 }
 
@@ -1154,8 +1187,11 @@ function updateUnits(dt){
       continue;
     }
 
-    // Enemy AI (god view)
-    if(!u.target||!u.target.alive) u.target=findNearestEnemy(u);
+    // Enemy AI (Phase5: fog-limited vision + blind orders)
+    const aiVisible = u.target && u.target.alive && isEntityVisibleToAI(u.target);
+    if(!u.target || !u.target.alive || !aiVisible){
+      u.target = findNearestVisibleEnemyAI(u);
+    }
     if(u.target){
       u.facing = Math.atan2(u.target.y-u.y, u.target.x-u.x);
       const d=cellDist(u,u.target);
@@ -1166,6 +1202,16 @@ function updateUnits(dt){
           else{attackTarget(u,u.target);u.atkCooldown=u.atkSpeed;u.swingAnim=1;}
         }
       } else {moveToward(u,u.target.x,u.target.y,dt);}
+    } else {
+      // Phase5: Blind orders — melee push midline, ranged hold tower
+      if(u.type==='infantry'||u.type==='cavalry'){
+        // Advance toward center line (x=10)
+        const midX = COLS/2 * CELL;
+        const hq=buildings.find(b=>b.type==='hq'&&b.team==='enemy'&&b.alive);
+        if(hq) moveToward(u, midX, hq.y, dt); // advance toward center at HQ y-level
+        else moveToward(u, midX, u.y, dt);
+      }
+      // Archers: hold position near towers (already near HQ from spawn)
     }
   }
 
