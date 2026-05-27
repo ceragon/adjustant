@@ -1034,6 +1034,7 @@ function isBuildingVisibleToAI(b){return isCellVisibleAI(b.gx,b.gy);}
 
 // ===== GAME LOOP =====
 function gameLoop(now){
+  try {
   const dt=Math.min((now-lastTime)/1000,0.1);lastTime=now;
   if(phase!=='combat')return;
   battleTimer-=dt;updateTimer();
@@ -1044,6 +1045,7 @@ function gameLoop(now){
   updateAdvisor(dt);updateMoveCursor(dt);
   checkWinCondition();
   render();
+  } catch(e) { console.error('[gameLoop]', e, e.stack); }
   animId=requestAnimationFrame(gameLoop);
 }
 
