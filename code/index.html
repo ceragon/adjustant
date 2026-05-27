@@ -1566,7 +1566,7 @@ function endGame(result){
   const pA=units.filter(u=>u.team==='player'&&u.alive).length;
   const eL=MAX_UNITS-units.filter(u=>u.team==='enemy'&&u.alive).length;
   const timeUsed=BATTLE_TIME-Math.max(0,Math.ceil(battleTimer));
-  $('result-stats').innerHTML=`<div>⏱ 用时: ${Math.floor(timeUsed/60)}分${timeUsed%60}秒</div><div>🔵 我方损失: ${MAX_UNITS-pA}</div><div>🔴 敌方损失: ${eL}</div><div>🔵 我方剩余: ${calcPower('player')}</div><div>🔴 敌方剩余: ${calcPower('enemy')}</div>`;
+  $('result-stats').innerHTML=`<div>⏱ 用时: ${Math.floor(timeUsed/60)}分${timeUsed%60}秒</div><div>🔵 我方损失: ${MAX_UNITS-pA}</div><div>🔴 敌方损失: ${eL}</div><div>🔵 我方总血量: ${calcPower('player')}</div><div>🔴 敌方总血量: ${calcPower('enemy')}</div>`;
   showScreen('result-screen');
 }
 
