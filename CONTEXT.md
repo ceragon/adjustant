@@ -14,4 +14,4 @@
 | Scattering / Separation (散开) | Post-movement push-apart logic preventing unit overlap. Applied every tick as pairwise separation. Capped at 50 iterations per frame to prevent freeze. |
 | Focus Command (集火指令) | Player manually targets a specific enemy unit; overrides retreat and idle behavior. |
 | God View (上帝视角) | AI can see all entities regardless of fog. Bug fixed — AI uses same fog system as player (Option A: each AI unit produces vision). |
-| Blind Orders (盲指令) | Commands given to AI units when no enemy is visible. Melee units advance toward center line; ranged units hold position near towers. |
+| Blind Orders (盲指令) | AI在看不见敌人时的行为。近战单位向中线推进，弓箭手跟在后方安全距离。 |

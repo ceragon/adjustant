@@ -335,8 +335,8 @@ const EDGE_SCROLL_MARGIN = 10;
 const EDGE_SCROLL_SPEED = 400;
 const CAMERA_SPEED = 500;
 const DRAG_THRESHOLD = 5;
-const MINIMAP_SIZE = 168;
-const MINIMAP_CELL = MINIMAP_SIZE / COLS; // 8px per cell
+const MINIMAP_SIZE = 128;
+const MINIMAP_CELL = MINIMAP_SIZE / COLS; // 6.4px per cell
 const MINIMAP_MARGIN = 10;
 const FOG_UNEXPLORED = 0, FOG_EXPLORED = 1, FOG_VISIBLE = 2;
 const BUILDING_VISION_RANGE = 4;
@@ -1190,15 +1190,20 @@ function updateUnits(dt){
         }
       } else {moveToward(u,u.target.x,u.target.y,dt);}
     } else {
-      // Phase5: Blind orders — melee push midline, ranged hold tower
+      // Phase5: Blind orders — melee push midline, ranged follow behind
       if(u.type==='infantry'||u.type==='cavalry'){
         // Advance toward center line (x=10)
         const midX = COLS/2 * CELL;
         const hq=buildings.find(b=>b.type==='hq'&&b.team==='enemy'&&b.alive);
-        if(hq) moveToward(u, midX, hq.y, dt); // advance toward center at HQ y-level
+        if(hq) moveToward(u, midX, hq.y, dt);
         else moveToward(u, midX, u.y, dt);
+      } else if(u.type==='archer'){
+        // Archers advance but stay behind melee (x=14, closer to own side)
+        const archerX = 14 * CELL;
+        const hq=buildings.find(b=>b.type==='hq'&&b.team==='enemy'&&b.alive);
+        if(hq) moveToward(u, archerX, hq.y, dt);
+        else moveToward(u, archerX, u.y, dt);
       }
-      // Archers: hold position near towers (already near HQ from spawn)
     }
   }
 
@@ -2217,7 +2222,7 @@ function drawMoveCursor(){
 
 // ===== MINIMAP =====
 function drawMinimap(){
-  const mx=VPW-MINIMAP_SIZE-MINIMAP_MARGIN, my=VPH-MINIMAP_SIZE-MINIMAP_MARGIN;
+  const mx=VPW-MINIMAP_SIZE-MINIMAP_MARGIN, my=MINIMAP_MARGIN;
   // Ornate frame
   ctx.fillStyle='#1a0f05';
   ctx.fillRect(mx-4, my-4, MINIMAP_SIZE+8, MINIMAP_SIZE+8);
@@ -2282,7 +2287,7 @@ function drawMinimap(){
 }
 
 function handleMinimapClick(sx,sy){
-  const mx=VPW-MINIMAP_SIZE-MINIMAP_MARGIN, my=VPH-MINIMAP_SIZE-MINIMAP_MARGIN;
+  const mx=VPW-MINIMAP_SIZE-MINIMAP_MARGIN, my=MINIMAP_MARGIN;
   if(sx>=mx&&sx<=mx+MINIMAP_SIZE&&sy>=my&&sy<=my+MINIMAP_SIZE){
     const wx=(sx-mx)/MINIMAP_SIZE*W;
     const wy=(sy-my)/MINIMAP_SIZE*H;
