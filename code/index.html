@@ -331,7 +331,7 @@ const VPW = VIEWPORT_CELLS * CELL, VPH = VIEWPORT_CELLS * CELL; // 600x600 viewp
 const MAX_UNITS = 8;
 const BATTLE_TIME = 180;
 const COUNTER_BONUS = 1.6;
-const EDGE_SCROLL_MARGIN = 40;
+const EDGE_SCROLL_MARGIN = 10;
 const EDGE_SCROLL_SPEED = 400;
 const CAMERA_SPEED = 500;
 const DRAG_THRESHOLD = 5;
@@ -351,14 +351,14 @@ const UNIT_DEFS = {
 // Spawn configs: 3 left, 3 right. Towers flank HQ at Y±1
 const SPAWN_CONFIGS = {
   left:[
-    {hq:[3,10],towers:[[3,9],[3,11]]},
-    {hq:[2,5],towers:[[2,4],[2,6]]},
-    {hq:[2,15],towers:[[2,14],[2,16]]}
+    {hq:[3,10],towers:[[3,8],[3,12]]},
+    {hq:[2,5],towers:[[2,3],[2,7]]},
+    {hq:[2,15],towers:[[2,13],[2,17]]}
   ],
   right:[
-    {hq:[17,10],towers:[[17,9],[17,11]]},
-    {hq:[18,5],towers:[[18,4],[18,6]]},
-    {hq:[18,15],towers:[[18,14],[18,16]]}
+    {hq:[17,10],towers:[[17,8],[17,12]]},
+    {hq:[18,5],towers:[[18,3],[18,7]]},
+    {hq:[18,15],towers:[[18,13],[18,17]]}
   ]
 };
 
@@ -386,6 +386,7 @@ let dragScreenCurX = 0, dragScreenCurY = 0;
 
 // Fog
 let fogGrid = null, cloudCanvas = null, fogOverlayCanvas = null, fogOverlayCtx = null;
+let aiFogGrid = null; // AI's independent fog — Phase5: no god view
 let visionTickTimer = 0;
 let exploredBuildings = new Map();
 
@@ -479,8 +480,14 @@ function initDeploy(){
   tacticalPriority=null;
   formationUnitList=[];formationAssignments={};pendingSpawnConfigs=null;
   terrainCanvas=null;decorationList=[];
+  // Phase5.2: Full state reset — prevent stale data on replay
+  obstacles=[];obstacleSet=new Set();
+  fogGrid=null;cloudCanvas=null;fogOverlayCanvas=null;fogOverlayCtx=null;
+  exploredBuildings=new Map();visionTickTimer=0;
+  formationUnitList=[];formationAssignments={};
   keysDown.clear();
   if(animId)cancelAnimationFrame(animId);
+  animId=null;lastTime=0;
   showScreen('deploy-screen');
   renderDeployCards();
 }
@@ -948,20 +955,30 @@ function generateCloudTexture(){
 
 function initFog(){
   fogGrid=new Uint8Array(COLS*ROWS);
+  aiFogGrid=new Uint8Array(COLS*ROWS); // Phase5: AI independent fog
   exploredBuildings=new Map();visionTickTimer=0;
   cloudCanvas=generateCloudTexture();
   fogOverlayCanvas=document.createElement('canvas');fogOverlayCanvas.width=W;fogOverlayCanvas.height=H;
   fogOverlayCtx=fogOverlayCanvas.getContext('2d');
-  // BUG-003: Reveal entire player half
+  // Reveal player's own half
   const playerSide=buildings.find(b=>b.team==='player'&&b.type==='hq');
   const isLeft=playerSide && playerSide.gx<COLS/2;
   const halfCol=isLeft?Math.ceil(COLS/2):Math.floor(COLS/2);
   for(let gx=isLeft?0:halfCol;gx<(isLeft?halfCol:COLS);gx++){
     for(let gy=0;gy<ROWS;gy++) fogGrid[gy*COLS+gx]=FOG_VISIBLE;
   }
-  // BUG-004: Use same vision range as tick (no +2)
+  // Phase5: Reveal AI's own half (mirrored)
+  const aiHalfStart=isLeft?halfCol:0;
+  const aiHalfEnd=isLeft?COLS:halfCol;
+  for(let gx=aiHalfStart;gx<aiHalfEnd;gx++){
+    for(let gy=0;gy<ROWS;gy++) aiFogGrid[gy*COLS+gx]=FOG_VISIBLE;
+  }
+  // Player vision sources
   for(const b of buildings){if(b.team==='player'&&b.alive) markDiamond(b.gx,b.gy,BUILDING_VISION_RANGE);}
   for(const u of units){if(u.team==='player'&&u.alive) markDiamond(u.gx,u.gy,Math.ceil(u.range+1));}
+  // Phase5: AI vision sources — same ranges, but on AI fog
+  for(const b of buildings){if(b.team==='enemy'&&b.alive) markDiamondAI(b.gx,b.gy,BUILDING_VISION_RANGE);}
+  for(const u of units){if(u.team==='enemy'&&u.alive) markDiamondAI(u.gx,u.gy,Math.ceil(u.range+1));}
 }
 
 function markDiamond(cx,cy,range){
@@ -1155,15 +1172,19 @@ function updateUnits(dt){
   // Remove dead
   units=units.filter(u=>u.alive||u.deathTimer>0);
 
-  // Separation
+  // Separation — Phase5.2: cap iterations to prevent main-thread freeze
+  const MAX_SEP_ITER = 200;
+  let sepCount = 0;
   for(let i=0;i<units.length;i++){
     if(!units[i].alive)continue;
     for(let j=i+1;j<units.length;j++){
       if(!units[j].alive)continue;
+      if(++sepCount > MAX_SEP_ITER) break;
       const a=units[i],b=units[j];const d=dist(a,b);const minD=CELL*0.6;
       if(d<minD&&d>0){const push=(minD-d)*0.3;const dx=(a.x-b.x)/d,dy=(a.y-b.y)/d;
         a.x+=dx*push;a.y+=dy*push;b.x-=dx*push;b.y-=dy*push;}
     }
+    if(sepCount > MAX_SEP_ITER) break;
   }
 }
 
