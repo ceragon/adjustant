@@ -756,8 +756,8 @@ function initTerrain(){
     }
   }
 
-  // Subtle grid
-  tctx.strokeStyle = 'rgba(0,0,0,0.08)';
+  // Ultra-subtle grid (nearly invisible)
+  tctx.strokeStyle = 'rgba(0,0,0,0.015)';
   tctx.lineWidth = 1;
   for(let x=0;x<=W;x+=CELL){tctx.beginPath();tctx.moveTo(x,0);tctx.lineTo(x,H);tctx.stroke();}
   for(let y=0;y<=H;y+=CELL){tctx.beginPath();tctx.moveTo(0,y);tctx.lineTo(W,y);tctx.stroke();}
@@ -1179,6 +1179,26 @@ function moveToAttackSlot(u,target,dt){
 
 function moveToward(u,tx,ty,dt){
   const dx=tx-u.x,dy=ty-u.y;const d=Math.hypot(dx,dy);if(d<2)return;
+  // Stuck detection: record position before movement
+  const prevX=u.x,prevY=u.y;
+  if(u._stuckFrames===undefined){u._stuckFrames=0;u._stuckEscape=0;}
+  // If currently in escape mode, move backward for a few frames before resuming
+  if(u._stuckEscape>0){
+    u._stuckEscape--;
+    const backDir=Math.atan2(u.y-ty,u.x-tx); // away from target
+    const bx=Math.cos(backDir)*u.speed*CELL*dt*1.5;
+    const by=Math.sin(backDir)*u.speed*CELL*dt*1.5;
+    const nbx=u.x+bx,nby=u.y+by;
+    if(!isObstacleAt(nbx,nby)){u.x=nbx;u.y=nby;}
+    else{
+      // Try perpendicular escape
+      const px=-Math.sin(backDir),py=Math.cos(backDir);
+      const ex=u.x+px*u.speed*CELL*dt,ey=u.y+py*u.speed*CELL*dt;
+      if(!isObstacleAt(ex,ey)){u.x=ex;u.y=ey;}
+    }
+    u.x=clamp(u.x,CELL/2,W-CELL/2);u.y=clamp(u.y,CELL/2,H-CELL/2);
+    return;
+  }
   let dirX=dx/d,dirY=dy/d;const step=u.speed*CELL*dt;
   u.facing = Math.atan2(dirY, dirX);
   const la=CELL*0.8;const nx=u.x+dirX*la,ny=u.y+dirY*la;
@@ -1234,6 +1254,20 @@ function moveToward(u,tx,ty,dt){
     }
   }
   u.x=clamp(u.x,CELL/2,W-CELL/2);u.y=clamp(u.y,CELL/2,H-CELL/2);
+  // Stuck detection: check displacement this frame
+  const moved=Math.hypot(u.x-prevX,u.y-prevY);
+  if(moved<0.08){
+    u._stuckFrames++;
+    if(u._stuckFrames>=30){
+      // Unit is stuck — clear command, enter escape mode for 15 frames
+      u._stuckFrames=0;
+      u._stuckEscape=15;
+      u.command=null;
+      u.idle=true;
+    }
+  } else {
+    u._stuckFrames=0;
+  }
 }
 
 function attackTarget(attacker,target){
