@@ -1076,6 +1076,35 @@ function findNearestVisibleEnemyAI(unit){
   return best;
 }
 
+function findNearestFogEdge(unit){
+  // Find nearest unexplored (FOG_UNEXPLORED) cell, but prefer cells adjacent to explored ones (edge)
+  let best=null,bestD=Infinity;
+  const ugx=Math.floor(unit.x/CELL), ugy=Math.floor(unit.y/CELL);
+  for(let gy=0;gy<ROWS;gy++){
+    for(let gx=0;gx<COLS;gx++){
+      if(aiFogGrid[gy*COLS+gx]!==FOG_UNEXPLORED) continue;
+      // Check if adjacent to explored/visible (edge of fog)
+      let isEdge=false;
+      for(let dy=-1;dy<=1;dy++){
+        for(let dx=-1;dx<=1;dx++){
+          if(dx===0&&dy===0)continue;
+          const ngx=gx+dx,ngy=gy+dy;
+          if(ngx<0||ngx>=COLS||ngy<0||ngy>=ROWS)continue;
+          const nv=aiFogGrid[ngy*COLS+ngx];
+          if(nv===FOG_EXPLORED||nv===FOG_VISIBLE){isEdge=true;break;}
+        }
+        if(isEdge)break;
+      }
+      if(!isEdge) continue;
+      // Skip — too far behind (already in enemy half)
+      if(gx<ugx-4) continue;
+      const d=Math.hypot(gx-ugx, gy-ugy);
+      if(d<bestD){bestD=d;best={x:gx*CELL+CELL/2, y:gy*CELL+CELL/2};}
+    }
+  }
+  return best;
+}
+
 function findPriorityTarget(unit){
   // Manual target override
   if(unit.command && unit.command.type==='focus' && unit.command.target && unit.command.target.alive){
@@ -1192,19 +1221,33 @@ function updateUnits(dt){
         }
       } else {moveToward(u,u.target.x,u.target.y,dt);}
     } else {
-      // Phase5: Blind orders — melee push midline, ranged follow behind
-      if(u.type==='infantry'||u.type==='cavalry'){
-        // Advance toward center line (x=10)
-        const midX = COLS/2 * CELL;
-        const hq=buildings.find(b=>b.type==='hq'&&b.team==='enemy'&&b.alive);
-        if(hq) moveToward(u, midX, hq.y, dt);
-        else moveToward(u, midX, u.y, dt);
-      } else if(u.type==='archer'){
-        // Archers advance but stay behind melee (x=14, closer to own side)
-        const archerX = 14 * CELL;
-        const hq=buildings.find(b=>b.type==='hq'&&b.team==='enemy'&&b.alive);
-        if(hq) moveToward(u, archerX, hq.y, dt);
-        else moveToward(u, archerX, u.y, dt);
+      // Phase5: Blind orders — melee push midline, ranged follow behind, then explore fog
+      const hq=buildings.find(b=>b.type==='hq'&&b.team==='enemy'&&b.alive);
+      let exploreTarget = null;
+      if(u._exploreTarget) exploreTarget = u._exploreTarget;
+      else {
+        // Check if unit has reached its push position
+        let pushX = COLS/2 * CELL;
+        if(u.type==='archer') pushX = 14 * CELL;
+        const distToLine = Math.abs(u.x - pushX);
+        if(distToLine < CELL * 1.5) {
+          // Reached push line — find nearest unexplored (fog) cell edge
+          exploreTarget = findNearestFogEdge(u);
+          if(exploreTarget) {
+            u._exploreTarget = exploreTarget;
+          }
+        }
+      }
+      if(exploreTarget) {
+        moveToward(u, exploreTarget.x, exploreTarget.y, dt);
+        // Check if reached explore target
+        if(dist(u, exploreTarget) < CELL * 1.5) {
+          u._exploreTarget = null;
+        }
+      } else if(u.type==='infantry'||u.type==='cavalry'||u.type==='archer'){
+        const pushX = u.type==='archer' ? 14*CELL : COLS/2*CELL;
+        if(hq) moveToward(u, pushX, hq.y, dt);
+        else moveToward(u, pushX, u.y, dt);
       }
     }
   }
