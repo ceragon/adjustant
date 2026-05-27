@@ -1003,14 +1003,8 @@ function updateVision(){
   for(let i=0;i<fogGrid.length;i++){if(fogGrid[i]===FOG_VISIBLE)fogGrid[i]=FOG_EXPLORED;}
   for(const u of units){if(u.alive&&u.team==='player') markDiamond(u.gx,u.gy,Math.ceil(u.range+1));}
   for(const b of buildings){if(b.alive&&b.team==='player') markDiamond(b.gx,b.gy,BUILDING_VISION_RANGE);}
-  const playerHQ=buildings.find(b=>b.team==='player'&&b.type==='hq'&&b.alive);
-  if(playerHQ){
-    const isLeft=playerHQ.gx<COLS/2;
-    const halfCol=isLeft?Math.ceil(COLS/2):Math.floor(COLS/2);
-    for(let gx=isLeft?0:halfCol;gx<(isLeft?halfCol:COLS);gx++){
-      for(let gy=0;gy<ROWS;gy++) fogGrid[gy*COLS+gx]=FOG_VISIBLE;
-    }
-  }
+  // Phase5-fix: Don't force-set entire player half every tick — breaks explored state.
+  // The half was already set at initFog; let vision sources handle VISIBLE naturally.
   // Track explored enemy buildings
   for(const b of buildings){
     if(b.team==='player'||!b.alive)continue;
@@ -1022,14 +1016,7 @@ function updateVision(){
   for(let i=0;i<aiFogGrid.length;i++){if(aiFogGrid[i]===FOG_VISIBLE)aiFogGrid[i]=FOG_EXPLORED;}
   for(const u of units){if(u.alive&&u.team==='enemy') markDiamondAI(u.gx,u.gy,Math.ceil(u.range+1));}
   for(const b of buildings){if(b.alive&&b.team==='enemy') markDiamondAI(b.gx,b.gy,BUILDING_VISION_RANGE);}
-  const enemyHQ=buildings.find(b=>b.team==='enemy'&&b.type==='hq'&&b.alive);
-  if(enemyHQ){
-    const isLeft=enemyHQ.gx<COLS/2;
-    const halfCol=isLeft?Math.ceil(COLS/2):Math.floor(COLS/2);
-    for(let gx=isLeft?halfCol:0;gx<(isLeft?COLS:halfCol);gx++){
-      for(let gy=0;gy<ROWS;gy++) aiFogGrid[gy*COLS+gx]=FOG_VISIBLE;
-    }
-  }
+  // Phase5-fix: Same — don't force-set AI half every tick
 }
 
 function getFogCell(gx,gy){if(gx<0||gx>=COLS||gy<0||gy>=ROWS)return FOG_UNEXPLORED;return fogGrid[gy*COLS+gx];}
