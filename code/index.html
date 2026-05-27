@@ -376,7 +376,7 @@ const SPAWN_CONFIGS = {
 let phase = 'deploy';
 let selected = {infantry:0,archer:0,cavalry:0};
 let units = [], buildings = [], projectiles = [], particles = [];
-let battleTimer = BATTLE_TIME, lastTime = 0, animId = null;
+let battleTimer = BATTLE_TIME, lastTime = 0, animId = null, frameCount = 0;
 let advisorTimer = 0, advisorActive = false, advisorAction = null;
 let selectedTarget = null; // enemy glow target
 let selectedUnits = [];    // player-selected friendly units
@@ -485,7 +485,7 @@ function initDeploy(){
   phase='deploy';
   selected={infantry:0,archer:0,cavalry:0};
   units=[];buildings=[];projectiles=[];particles=[];
-  battleTimer=BATTLE_TIME;advisorTimer=0;advisorActive=false;
+  battleTimer=BATTLE_TIME;lastTime=0;frameCount=0;advisorTimer=0;advisorActive=false;
   selectedTarget=null;selectedUnits=[];moveCursor=null;
   tacticalPriority=null;
   formationUnitList=[];formationAssignments={};pendingSpawnConfigs=null;
@@ -716,6 +716,61 @@ function initObstacles(){
   }
 }
 function isObstacle(gx,gy){return obstacleSet.has(gx+','+gy);}
+
+// BFS pathfinding: returns array of {x,y} grid coords, or null if unreachable
+function bfsFindPath(sgx,sgy,tgx,tgy){
+  if(sgx===tgx&&sgy===tgy)return [{x:sgx,y:sgy}];
+  const key=(x,y)=>y*COLS+x;
+  const visited=new Uint8Array(COLS*ROWS);
+  const parent=new Int16Array(COLS*ROWS*2);
+  const q=[{x:sgx,y:sgy}];
+  visited[key(sgx,sgy)]=1;
+  let qi=0;
+  while(qi<q.length){
+    const cur=q[qi++];
+    const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+    for(const[ddx,ddy]of dirs){
+      const nx=cur.x+ddx,ny=cur.y+ddy;
+      if(nx<0||nx>=COLS||ny<0||ny>=ROWS||visited[key(nx,ny)]||isObstacle(nx,ny))continue;
+      visited[key(nx,ny)]=1;
+      const nk=key(nx,ny);
+      parent[nk*2]=cur.x;parent[nk*2+1]=cur.y;
+      if(nx===tgx&&ny===tgy){
+        // Reconstruct
+        const path=[];let cx=cur.x,cy=cur.y;
+        while(cx!==sgx||cy!==sgy){path.unshift({x:cx,y:cy});const pk=key(cx,cy);const px=parent[pk*2],py=parent[pk*2+1];cx=px;cy=py;}
+        return path;
+      }
+      q.push({x:nx,y:ny});
+    }
+  }
+  return null;
+}
+
+// BFS: find nearest reachable cell to target (when target itself unreachable)
+function bfsFindNearestReachable(sgx,sgy,tgx,tgy,maxDist){
+  const key=(x,y)=>y*COLS+x;
+  const visited=new Uint8Array(COLS*ROWS);
+  const q=[{x:sgx,y:sgy}];
+  visited[key(sgx,sgy)]=1;
+  let qi=0;
+  let best=null,bestD=Infinity;
+  while(qi<q.length){
+    const cur=q[qi++];
+    const d=Math.hypot(cur.x-tgx,cur.y-tgy);
+    if(d<bestD&&!isObstacle(cur.x,cur.y)){bestD=d;best={x:cur.x,y:cur.y};}
+    if(qi>maxDist*4)break; // limit search
+    const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+    for(const[ddx,ddy]of dirs){
+      const nx=cur.x+ddx,ny=cur.y+ddy;
+      if(nx<0||nx>=COLS||ny<0||ny>=ROWS||visited[key(nx,ny)])continue;
+      if(isObstacle(nx,ny))continue;
+      visited[key(nx,ny)]=1;
+      q.push({x:nx,y:ny});
+    }
+  }
+  return best;
+}
 function isObstacleAt(x,y){return isObstacle(Math.floor(x/CELL),Math.floor(y/CELL));}
 function hasLineOfSight(x1,y1,x2,y2){
   const d=Math.hypot(x2-x1,y2-y1);const steps=Math.ceil(d/(CELL*0.5));
@@ -849,7 +904,7 @@ function startCombat(spawnConfigs, unitList, formAssign){
   canvas.style.margin='0 auto';
 
   units=[];buildings=[];projectiles=[];particles=[];
-  battleTimer=BATTLE_TIME;
+  battleTimer=BATTLE_TIME;lastTime=0;frameCount=0;
   advisorTimer=10+Math.random()*5;advisorActive=false;
   selectedTarget=null;selectedUnits=[];moveCursor=null;
   tacticalPriority=null;
@@ -1045,6 +1100,7 @@ function isBuildingVisibleToAI(b){return isCellVisibleAI(b.gx,b.gy);}
 // ===== GAME LOOP =====
 function gameLoop(now){
   try {
+  frameCount++;
   const dt=Math.min((now-lastTime)/1000,0.1);lastTime=now;
   if(phase!=='combat')return;
   battleTimer-=dt;updateTimer();
@@ -1211,7 +1267,17 @@ function updateUnits(dt){
         // BUG-005: Target lost → idle, don't auto-switch
         u.idle=true;u.target=null;
       }
-      // idle: do nothing
+      if(u.idle){
+        // Auto-engage: if enemy enters vision, start attacking
+        const near=findNearestVisibleEnemy(u);
+        if(near&&cellDist(u,near)<=u.range*2){
+          u.target=near;u.idle=false;u.command=null;
+          if(cellDist(u,near)<=u.range){
+            moveToAttackSlot(u,near,dt);
+            if(u.atkCooldown<=0){attackTarget(u,near);u.atkCooldown=u.atkSpeed;u.swingAnim=1;}
+          } else {moveToward(u,near.x,near.y,dt);}
+        }
+      }
       continue;
     }
 
@@ -1293,91 +1359,57 @@ function moveToAttackSlot(u,target,dt){
 
 function moveToward(u,tx,ty,dt){
   const dx=tx-u.x,dy=ty-u.y;const d=Math.hypot(dx,dy);if(d<2)return;
-  // Stuck detection: record position before movement
   const prevX=u.x,prevY=u.y;
   if(u._stuckFrames===undefined){u._stuckFrames=0;u._stuckEscape=0;}
-  // If currently in escape mode, move backward for a few frames before resuming
-  if(u._stuckEscape>0){
-    u._stuckEscape--;
-    const backDir=Math.atan2(u.y-ty,u.x-tx); // away from target
-    const bx=Math.cos(backDir)*u.speed*CELL*dt*1.5;
-    const by=Math.sin(backDir)*u.speed*CELL*dt*1.5;
-    const nbx=u.x+bx,nby=u.y+by;
-    if(!isObstacleAt(nbx,nby)){u.x=nbx;u.y=nby;}
-    else{
-      // Try perpendicular escape
-      const px=-Math.sin(backDir),py=Math.cos(backDir);
-      const ex=u.x+px*u.speed*CELL*dt,ey=u.y+py*u.speed*CELL*dt;
-      if(!isObstacleAt(ex,ey)){u.x=ex;u.y=ey;}
+  
+  // Recompute path every ~30 frames or when target changes significantly
+  const tgx=Math.floor(tx/CELL),tgy=Math.floor(ty/CELL);
+  if(!u._path||(u._pathTick===undefined||(frameCount-u._pathTick)>30)){
+    const sgx=Math.floor(u.x/CELL),sgy=Math.floor(u.y/CELL);
+    u._path=bfsFindPath(sgx,sgy,tgx,tgy);
+    if(!u._path){
+      // Target unreachable — find nearest reachable
+      const nearest=bfsFindNearestReachable(sgx,sgy,tgx,tgy,40);
+      if(nearest){u._path=bfsFindPath(sgx,sgy,nearest.x,nearest.y);}
     }
-    u.x=clamp(u.x,CELL/2,W-CELL/2);u.y=clamp(u.y,CELL/2,H-CELL/2);
-    return;
+    u._pathTick=frameCount;u._pathIdx=0;
   }
-  let dirX=dx/d,dirY=dy/d;const step=u.speed*CELL*dt;
-  u.facing = Math.atan2(dirY, dirX);
-  const la=CELL*0.8;const nx=u.x+dirX*la,ny=u.y+dirY*la;
-  if(isObstacleAt(nx,ny)){
-    const px=-dirY,py=dirX;
-    const a1x=u.x+(dirX*0.5+px)*la,a1y=u.y+(dirY*0.5+py)*la;
-    const a2x=u.x+(dirX*0.5-px)*la,a2y=u.y+(dirY*0.5-py)*la;
-    const b1=isObstacleAt(a1x,a1y),b2=isObstacleAt(a2x,a2y);
-    if(!b1&&(b2||Math.random()>0.5)){dirX=dirX*0.5+px;dirY=dirY*0.5+py;}
-    else if(!b2){dirX=dirX*0.5-px;dirY=dirY*0.5-py;}
-    else {
-      // NEW-001: Both lateral probes blocked — try full perpendicular directions (90° turn)
-      const p1x=u.x+px*la,p1y=u.y+py*la;
-      const p2x=u.x-px*la,p2y=u.y-py*la;
-      if(!isObstacleAt(p1x,p1y)){dirX=px;dirY=py;}
-      else if(!isObstacleAt(p2x,p2y)){dirX=-px;dirY=-py;}
-      else {
-        // NEW-002: All directions blocked — try backing up slightly then re-probing
-        const backX=u.x-dirX*CELL*0.5,backY=u.y-dirY*CELL*0.5;
-        if(!isObstacleAt(backX,backY)){
-          // Move backward to create space, then try perpendicular again
-          u.x=backX;u.y=backY;
-          const bp1x=backX+px*la*1.5,bp1y=backY+py*la*1.5;
-          const bp2x=backX-px*la*1.5,bp2y=backY-py*la*1.5;
-          if(!isObstacleAt(bp1x,bp1y)){dirX=px;dirY=py;}
-          else if(!isObstacleAt(bp2x,bp2y)){dirX=-px;dirY=-py;}
-          else {dirX=px;dirY=py;} // Force perpendicular as last resort
-        } else {
-          // Truly trapped — force perpendicular movement anyway (may squeeze through gaps)
-          dirX=px;dirY=py;
-        }
-      }
+  
+  // Follow path
+  if(u._path&&u._path.length>0){
+    const next=u._path[u._pathIdx]||u._path[u._path.length-1];
+    const nx=next.x*CELL+CELL/2,ny=next.y*CELL+CELL/2;
+    const ddx=nx-u.x,ddy=ny-u.y,dd=Math.hypot(ddx,ddy);
+    if(dd<CELL*0.3){
+      u._pathIdx++;
+      if(u._pathIdx>=u._path.length)u._path=null;
+      return;
     }
-    const nd=Math.hypot(dirX,dirY);if(nd>0){dirX/=nd;dirY/=nd;}
-  }
-  const newX=u.x+dirX*Math.min(step,d),newY=u.y+dirY*Math.min(step,d);
-  if(!isObstacleAt(newX,newY)){u.x=newX;u.y=newY;}
-  else{
-    // NEW-003: If diagonal move blocked, try axis-aligned with obstacle avoidance
-    const stepX=dirX*Math.min(step,d),stepY=dirY*Math.min(step,d);
-    if(!isObstacleAt(u.x+stepX,u.y)){u.x+=stepX;}
-    else if(!isObstacleAt(u.x,u.y+stepY)){u.y+=stepY;}
-    else {
-      // NEW-004: Both axes blocked — try perpendicular sliding
+    const dirX=ddx/dd,dirY=ddy/dd;
+    const step=u.speed*CELL*dt;
+    u.x+=dirX*Math.min(step,dd);u.y+=dirY*Math.min(step,dd);
+    u.facing=Math.atan2(dirY,dirX);
+  } else {
+    // No path available — try direct movement with simple obstacle avoidance
+    let dirX=dx/d,dirY=dy/d;
+    const step=u.speed*CELL*dt;
+    u.facing=Math.atan2(dirY,dirX);
+    const la=CELL*0.8;
+    if(isObstacleAt(u.x+dirX*la,u.y+dirY*la)){
       const px=-dirY,py=dirX;
-      const perpStep=u.speed*CELL*dt*0.7;
-      if(!isObstacleAt(u.x+px*perpStep,u.y+py*perpStep)){
-        u.x+=px*perpStep;u.y+=py*perpStep;
-      } else if(!isObstacleAt(u.x-px*perpStep,u.y-py*perpStep)){
-        u.x-=px*perpStep;u.y-=py*perpStep;
-      }
-      // else: truly stuck, unit will wait for separation or obstacle clearance
+      if(!isObstacleAt(u.x+px*la,u.y+py*la)){dirX=px;dirY=py;}
+      else if(!isObstacleAt(u.x-px*la,u.y-py*la)){dirX=-px;dirY=-py;}
     }
+    const newX=u.x+dirX*Math.min(step,d),newY=u.y+dirY*Math.min(step,d);
+    if(!isObstacleAt(newX,newY)){u.x=newX;u.y=newY;}
   }
+  
   u.x=clamp(u.x,CELL/2,W-CELL/2);u.y=clamp(u.y,CELL/2,H-CELL/2);
-  // Stuck detection: check displacement this frame
   const moved=Math.hypot(u.x-prevX,u.y-prevY);
   if(moved<0.08){
     u._stuckFrames++;
-    if(u._stuckFrames>=30){
-      // Unit is stuck — clear command, enter escape mode for 15 frames
-      u._stuckFrames=0;
-      u._stuckEscape=15;
-      u.command=null;
-      u.idle=true;
+    if(u._stuckFrames>=20){
+      u._stuckFrames=0;u._path=null;u.command=null;u.idle=true;
     }
   } else {
     u._stuckFrames=0;
